@@ -267,6 +267,8 @@ class CompareVolumesLogic:
       layoutNode.AddLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
     layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
 
+    slicer.app.processEvents()
+
     # put one of the volumes into each view, or none if it should be blank
     layoutManager = slicer.app.layoutManager()
     for index in range(len(actualViewNames)):
