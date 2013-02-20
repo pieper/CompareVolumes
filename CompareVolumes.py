@@ -210,6 +210,7 @@ class CompareVolumesLogic:
     of all viewers and make the other volumes be the 
     forground.  If label is specified, make it active as
     the label layer of all viewers.
+    Return a map of slice nodes indexed by the view name (given or generated).
     """
     import math
 
@@ -268,6 +269,7 @@ class CompareVolumesLogic:
     layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
 
     # put one of the volumes into each view, or none if it should be blank
+    sliceNodesByViewName = {}
     layoutManager = slicer.app.layoutManager()
     for index in range(len(actualViewNames)):
       viewName = actualViewNames[index]
@@ -281,6 +283,8 @@ class CompareVolumesLogic:
       sliceNode = sliceWidget.mrmlSliceNode()
       sliceNode.SetOrientation(orientation)
       sliceWidget.fitSliceToBackground()
+      sliceNodesByViewName[viewName] = sliceNode
+    return sliceNodesByViewName
 
   def referenceCursors(self,annotationNode,targetVolume):
     """Create an image of the annotated volume centered
