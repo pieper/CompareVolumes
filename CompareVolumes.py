@@ -221,11 +221,18 @@ class CompareVolumesLogic:
     if not volumeNodes:
       volumeNodes = slicer.util.getNodes('*VolumeNode*').values()
 
-    # make a nearly square array - e.g. 3 volumes in 2x2 grid
-    c = math.sqrt(len(volumeNodes))
+    if len(volumeNodes) == 0:
+      return
+
+    # make an array with wide screen aspect ratio 
+    # - e.g. 3 volumes in 3x1 grid
+    # - 5 volumes 3x2 with only two volumes in second row
+    c = 1.5 * math.sqrt(len(volumeNodes))
     columns = math.floor(c)
     if c != columns:
       columns += 1
+    if columns > len(volumeNodes):
+      columns = len(volumeNodes)
     r = len(volumeNodes)/columns
     rows = math.floor(r)
     if r != rows:
@@ -404,13 +411,17 @@ class CompareVolumesTest(unittest.TestCase):
     otherBrain = sampleDataLogic.downloadMRBrainTumor1()
     logic.viewerPerVolume()
     logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain), viewNames=('brain', 'head','otherBrain'))
-    self.delayDisplay('Should be two rows with two columns, bottom right blank')
+    self.delayDisplay('Should be one row with three columns')
 
     logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain), viewNames=('brain', 'head','otherBrain'), orientation='Sagittal')
     self.delayDisplay('same thing in sagittal')
 
     logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain), viewNames=('brain', 'head','otherBrain'), orientation='Coronal')
     self.delayDisplay('same thing in coronal')
+
+    anotherHead = sampleDataLogic.downloadMRHead()
+    logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain,anotherHead), viewNames=('brain', 'head','otherBrain','anotherHead'), orientation='Coronal')
+    self.delayDisplay('now four volumes, with three columns and two rows')
 
     self.delayDisplay('Test passed!')
 
