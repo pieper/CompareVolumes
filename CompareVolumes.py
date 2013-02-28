@@ -201,7 +201,25 @@ class CompareVolumesLogic:
   requiring an instance of the Widget
   """
   def __init__(self):
-    pass
+    self.sliceViewItemPattern = """
+      <item><view class="vtkMRMLSliceNode" singletontag="{viewName}">
+        <property name="orientation" action="default">{orientation}</property>
+        <property name="viewlabel" action="default">{viewName}</property>
+        <property name="viewcolor" action="default">{color}</property>
+      </view></item>
+     """
+    # use a nice set of colors
+    self.colors = slicer.util.getNode('GenericColors')
+    self.lookupTable = self.colors.GetLookupTable()
+
+  def assignLayoutDescription(self,layoutDescription):
+    """assign the xml to the user-defined layout slot"""
+    layoutNode = slicer.util.getNode('*LayoutNode*')
+    if layoutNode.IsLayoutDescription(layoutNode.SlicerLayoutUserView):
+      layoutNode.SetLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
+    else:
+      layoutNode.AddLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
+    layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
 
   def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],orientation='Axial'):
     """ Load each volume in the scene into its own
@@ -213,10 +231,6 @@ class CompareVolumesLogic:
     Return a map of slice nodes indexed by the view name (given or generated).
     """
     import math
-
-    # use a nice set of colors
-    colors = slicer.util.getNode('GenericColors')
-    lookupTable = colors.GetLookupTable()
 
     if not volumeNodes:
       volumeNodes = slicer.util.getNodes('*VolumeNode*').values()
@@ -240,14 +254,9 @@ class CompareVolumesLogic:
 
     #
     # construct the XML for the layout
+    # - one viewer per volume
+    # - default orientation as specified
     #
-    viewItemPattern = """
-      <item><view class="vtkMRMLSliceNode" singletontag="{viewName}">
-        <property name="orientation" action="default">{orientation}</property>
-        <property name="viewlabel" action="default">{viewName}</property>
-        <property name="viewcolor" action="default">{color}</property>
-      </view></item>
-     """
     actualViewNames = []
     index = 1
     layoutDescription = ''
@@ -259,21 +268,17 @@ class CompareVolumesLogic:
           viewName = viewNames[index-1]
         except IndexError:
           viewName = 'SliceView-%d-%d' % (row,column)
-        rgb = [int(round(v*255)) for v in lookupTable.GetTableValue(index)[:-1]]
+        rgb = [int(round(v*255)) for v in self.lookupTable.GetTableValue(index)[:-1]]
         color = '#%0.2X%0.2X%0.2X' % tuple(rgb)
-        layoutDescription += viewItemPattern.format(viewName=viewName,orientation=orientation,color=color)
+        layoutDescription += self.sliceViewItemPattern.format(viewName=viewName,orientation=orientation,color=color)
         actualViewNames.append(viewName)
         index += 1
       layoutDescription += '</layout></item>\n'
     layoutDescription += '</layout>'
+    self.assignLayoutDescription(layoutDescription)
 
-    # assign the xml to the user-defined layout slot
-    layoutNode = slicer.util.getNode('*LayoutNode*')
-    if layoutNode.IsLayoutDescription(layoutNode.SlicerLayoutUserView):
-      layoutNode.SetLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
-    else:
-      layoutNode.AddLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
-    layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
+    # let the widgets all decide how big they should be
+    slicer.app.processEvents()
 
     # put one of the volumes into each view, or none if it should be blank
     sliceNodesByViewName = {}
@@ -293,61 +298,70 @@ class CompareVolumesLogic:
       sliceNodesByViewName[viewName] = sliceNode
     return sliceNodesByViewName
 
-  def referenceCursors(self,annotationNode,targetVolume):
-    """Create an image of the annotated volume centered
-    on the annotation and make it the cursor for looking 
-    at another volume
+  def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False):
+    """ Make an axi/sag/cor(/3D) row of viewers
+    for each volume in the scene.
+    If background is specified, put it in the background
+    of all viewers and make the other volumes be the 
+    forground.  If label is specified, make it active as
+    the label layer of all viewers.
+    Return a map of slice nodes indexed by the view name (given or generated).
     """
-    refID = annotationNode.GetAttribute('AssociatedNodeID')
-    referenceVolume = slicer.util.getNode(refID)
-    annotationRAS = [0,0,0]
-    annotationNode.GetFiducialCoordinates(annotationRAS)
+    import math
 
+    if not volumeNodes:
+      volumeNodes = slicer.util.getNodes('*VolumeNode*').values()
+
+    if len(volumeNodes) == 0:
+      return
+
+    #
+    # construct the XML for the layout
+    # - one row per volume
+    # - viewers for each orientation
+    #
+    orientations = ('Axial', 'Sagittal', 'Coronal')
+    actualViewNames = []
+    index = 1
+    layoutDescription = ''
+    layoutDescription += '<layout type="vertical">\n'
+    row = 0
+    for volumeNode in volumeNodes:
+      layoutDescription += ' <item> <layout type="horizontal">\n'
+      column = 0
+      for orientation in orientations:
+        viewName = volumeNode.GetName() + '-' + orientation
+        rgb = [int(round(v*255)) for v in self.lookupTable.GetTableValue(index)[:-1]]
+        color = '#%0.2X%0.2X%0.2X' % tuple(rgb)
+        layoutDescription += self.sliceViewItemPattern.format(viewName=viewName,orientation=orientation,color=color)
+        actualViewNames.append(viewName)
+        index += 1
+        column += 1
+      if include3D:
+        print('TODO: add 3D viewer')
+      layoutDescription += '</layout></item>\n'
+    row += 1
+    layoutDescription += '</layout>'
+    self.assignLayoutDescription(layoutDescription)
+
+    # let the widgets all decide how big they should be
+    slicer.app.processEvents()
+
+    # put one of the volumes into each row and set orientations
     layoutManager = slicer.app.layoutManager()
-    for sliceViewName in layoutManager.sliceViewNames():
-      # render the reference volume in each view
-      sliceWidget = layoutManager.sliceWidget(sliceViewName)
-      sliceView = sliceWidget.sliceView()
-      compositeNode = sliceWidget.mrmlSliceCompositeNode()
-      compositeNode.SetBackgroundVolumeID(referenceVolume.GetID())
-      sliceNode = sliceView.mrmlSliceNode()
-      sliceNode.JumpSliceByCentering(*annotationRAS)
-      sliceView.forceRender()
-      pixmap = qt.QPixmap.grabWidget(sliceWidget)
-      hotX, hotY = (pixmap.width()/2, pixmap.height()/2)
-      cursor = qt.QCursor(pixmap,hotX,hotY)
-      sliceWidget.setCursor(cursor)
-      compositeNode.SetBackgroundVolumeID(targetVolume.GetID())
+    sliceNodesByViewName = {}
+    for volumeNode in volumeNodes:
+      for orientation in orientations:
+        viewName = volumeNode.GetName() + '-' + orientation
+        sliceWidget = layoutManager.sliceWidget(viewName)
+        compositeNode = sliceWidget.mrmlSliceCompositeNode()
+        compositeNode.SetBackgroundVolumeID(volumeNode.GetID())
+        sliceNode = sliceWidget.mrmlSliceNode()
+        sliceNode.SetOrientation(orientation)
+        sliceWidget.fitSliceToBackground()
+        sliceNodesByViewName[viewName] = sliceNode
+    return sliceNodesByViewName
 
-  def clearCursors(self):
-    layoutManager = slicer.app.layoutManager()
-    for sliceViewName in layoutManager.sliceViewNames():
-      sliceWidget = layoutManager.sliceWidget(sliceViewName)
-      sliceWidget.unsetCursor()
-
-      """
-      baseImage = qt.QImage(":/Icons/AnnotationPointWithArrow.png")
-      effectImage = qt.QImage(self.effectIconFiles[effectName])
-      width = max(baseImage.width(), effectImage.width())
-      pad = -9
-      height = pad + baseImage.height() + effectImage.height()
-      width = height = max(width,height)
-      center = int(width/2)
-      cursorImage = qt.QImage(width, height, qt.QImage().Format_ARGB32)
-      painter = qt.QPainter()
-      cursorImage.fill(0)
-      painter.begin(cursorImage)
-      point = qt.QPoint(center - (baseImage.width()/2), 0)
-      painter.drawImage(point, baseImage)
-      point.setX(center - (effectImage.width()/2))
-      point.setY(cursorImage.height() - effectImage.height())
-      painter.drawImage(point, effectImage)
-      painter.end()
-      cursorPixmap = qt.QPixmap()
-      cursorPixmap = cursorPixmap.fromImage(cursorImage)
-      self.effectCursors[effectName] = qt.QCursor(cursorPixmap,center,0)
-    return self.effectCursors[effectName]
-    """
 
 class CompareVolumesTest(unittest.TestCase):
   """
@@ -422,6 +436,13 @@ class CompareVolumesTest(unittest.TestCase):
     anotherHead = sampleDataLogic.downloadMRHead()
     logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain,anotherHead), viewNames=('brain', 'head','otherBrain','anotherHead'), orientation='Coronal')
     self.delayDisplay('now four volumes, with three columns and two rows')
+
+
+    logic.viewersPerVolume(volumeNodes=(brain,head))
+    self.delayDisplay('now axi/sag/cor for two volumes')
+
+    logic.viewersPerVolume(volumeNodes=(brain,head,otherBrain))
+    self.delayDisplay('now axi/sag/cor for three volumes')
 
     self.delayDisplay('Test passed!')
 
