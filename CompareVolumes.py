@@ -267,7 +267,7 @@ class CompareVolumesLogic:
         try:
           viewName = viewNames[index-1]
         except IndexError:
-          viewName = 'SliceView-%d-%d' % (row,column)
+          viewName = '%d-%d' % (row,column)
         rgb = [int(round(v*255)) for v in self.lookupTable.GetTableValue(index)[:-1]]
         color = '#%0.2X%0.2X%0.2X' % tuple(rgb)
         layoutDescription += self.sliceViewItemPattern.format(viewName=viewName,orientation=orientation,color=color)
@@ -280,6 +280,11 @@ class CompareVolumesLogic:
     # let the widgets all decide how big they should be
     slicer.app.processEvents()
 
+    # if background is specified, remove it from the list: 
+    #  no need to have foreground over the reference node
+    if background:
+      volumeNodes = [ i for i in volumeNodes if i != background]
+
     # put one of the volumes into each view, or none if it should be blank
     sliceNodesByViewName = {}
     layoutManager = slicer.app.layoutManager()
@@ -289,14 +294,33 @@ class CompareVolumesLogic:
         volumeNodeID = volumeNodes[index].GetID()
       except IndexError:
         volumeNodeID = ""
+      
       sliceWidget = layoutManager.sliceWidget(viewName)
       compositeNode = sliceWidget.mrmlSliceCompositeNode()
-      compositeNode.SetBackgroundVolumeID(volumeNodeID)
+      if background:
+        compositeNode.SetBackgroundVolumeID(background.GetID())
+        if index:
+          compositeNode.SetForegroundVolumeID(volumeNodeID)
+      else:
+        compositeNode.SetBackgroundVolumeID(volumeNodeID)
+        
       sliceNode = sliceWidget.mrmlSliceNode()
       sliceNode.SetOrientation(orientation)
       sliceWidget.fitSliceToBackground()
       sliceNodesByViewName[viewName] = sliceNode
     return sliceNodesByViewName
+
+  def rotateToVolumePlanes(self, referenceVolume):
+    sliceNodes = slicer.util.getNodes('vtkMRMLSliceNode*')
+    for name, node in sliceNodes.items():
+      node.RotateToVolumePlane(referenceVolume)
+    # snap to IJK to try and avoid rounding errors
+    sliceLogics = slicer.app.layoutManager().mrmlSliceLogics()
+    numLogics = sliceLogics.GetNumberOfItems()
+    for n in range(numLogics):
+      l = sliceLogics.GetItemAsObject(n)
+      l.SnapSliceOffsetToIJK() 
+
 
   def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False):
     """ Make an axi/sag/cor(/3D) row of viewers
