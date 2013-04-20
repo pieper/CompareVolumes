@@ -283,7 +283,7 @@ class CompareVolumesLogic:
     # if background is specified, remove it from the list: 
     #  no need to have foreground over the reference node
     if background:
-      volumeNodes = [ i for i in volumeNodes if i != background]
+      volumeNodes = [background] + [ i for i in volumeNodes if i != background]
 
     # put one of the volumes into each view, or none if it should be blank
     sliceNodesByViewName = {}
@@ -299,11 +299,13 @@ class CompareVolumesLogic:
       compositeNode = sliceWidget.mrmlSliceCompositeNode()
       if background:
         compositeNode.SetBackgroundVolumeID(background.GetID())
-        if index:
-          compositeNode.SetForegroundVolumeID(volumeNodeID)
+        compositeNode.SetForegroundVolumeID(volumeNodeID)
       else:
         compositeNode.SetBackgroundVolumeID(volumeNodeID)
         
+      if label:
+        compositeNode.SetLabelVolumeID(label.GetID())
+
       sliceNode = sliceWidget.mrmlSliceNode()
       sliceNode.SetOrientation(orientation)
       sliceWidget.fitSliceToBackground()
