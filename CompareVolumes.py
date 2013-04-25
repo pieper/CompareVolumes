@@ -280,8 +280,8 @@ class CompareVolumesLogic:
     # let the widgets all decide how big they should be
     slicer.app.processEvents()
 
-    # if background is specified, remove it from the list: 
-    #  no need to have foreground over the reference node
+    # if background is specified, move it to the front of the list: 
+    #  it will show up in first slice view with itself as in foreground
     if background:
       volumeNodes = [background] + [ i for i in volumeNodes if i != background]
 
