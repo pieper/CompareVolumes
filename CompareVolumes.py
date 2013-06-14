@@ -323,6 +323,25 @@ class CompareVolumesLogic:
       l = sliceLogics.GetItemAsObject(n)
       l.SnapSliceOffsetToIJK() 
 
+  def zoom(self,factor,sliceNodes=None):
+    """Zoom slice nodes by factor.
+    factor: "Fit" or +/- amount to zoom
+    sliceNodes: list of slice nodes to change, None means all.
+    """
+    if not sliceNodes:
+      sliceNodes = slicer.util.getNodes('vtkMRMLSliceNode*')
+    layoutManager = slicer.app.layoutManager()
+    for sliceNode in sliceNodes.values():
+      if factor == "Fit":
+        sliceWidget = layoutManager.sliceWidget(sliceNode.GetLayoutName())
+        if sliceWidget:
+          sliceWidget.sliceLogic().FitSliceToAll()
+      else:
+        newFOVx = sliceNode.GetFieldOfView()[0] * factor
+        newFOVy = sliceNode.GetFieldOfView()[1] * factor
+        newFOVz = sliceNode.GetFieldOfView()[2]
+        sliceNode.SetFieldOfView( newFOVx, newFOVy, newFOVz )
+        sliceNode.UpdateMatrices()
 
   def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False):
     """ Make an axi/sag/cor(/3D) row of viewers
