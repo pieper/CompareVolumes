@@ -16,7 +16,7 @@ class CompareVolumes:
     This module helps organize layouts and volume compositing to help compare images
     """
     parent.acknowledgementText = """
-    This file was originally developed by Steve Pieper, Isomics, Inc. 
+    This file was originally developed by Steve Pieper, Isomics, Inc.
     It was partially funded by NIH grant 3P41RR013218-12S1
     and this work is part of the National Alliance for Medical Image
     Computing (NAMIC), funded by the National Institutes of Health
@@ -55,6 +55,7 @@ class CompareVolumesWidget:
     if not parent:
       self.setup()
       self.parent.show()
+    self.layerCheckerboard = None
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -79,10 +80,18 @@ class CompareVolumesWidget:
     # reload and test button
     # (use this during development, but remove it when delivering
     #  your module to users)
-    self.reloadAndTestButton = qt.QPushButton("Reload and Test")
+    self.reloadAndTestButton = qt.QPushButton("Reload and Test All")
     self.reloadAndTestButton.toolTip = "Reload this module and then run the self tests."
     reloadFormLayout.addWidget(self.reloadAndTestButton)
     self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
+
+    # reload and run specific tests
+    scenarios = ("Three Volume", "View Watcher", "LayerCheckerboard",)
+    for scenario in scenarios:
+      button = qt.QPushButton("Reload and Test %s" % scenario)
+      self.reloadAndTestButton.toolTip = "Reload this module and then run the %s self test." % scenario
+      reloadFormLayout.addWidget(button)
+      button.connect('clicked()', lambda s=scenario: self.onReloadAndTest(scenario=s))
 
     #
     # Parameters Area
@@ -111,31 +120,26 @@ class CompareVolumesWidget:
     parametersFormLayout.addRow("Target Volume: ", self.inputSelector)
 
     #
-    # Reference Cursors Buttons
+    # Add layer checkerboard area
     #
-    if False:
-      self.refOn = qt.QPushButton("Reference Cursors On")
-      parametersFormLayout.addRow(self.refOn)
-      self.refOff = qt.QPushButton("Reference Cursors Off")
-      parametersFormLayout.addRow(self.refOff)
-      # connections
-      self.refOn.connect('clicked(bool)', self.onRefOn)
-      self.refOff.connect('clicked(bool)', self.onRefOff)
+    layerCheckerboardCollapsibleButton = ctk.ctkCollapsibleButton()
+    layerCheckerboardCollapsibleButton.text = "Layer Checkerboard Popup"
+    self.layout.addWidget(layerCheckerboardCollapsibleButton)
+    layerCheckerboardFormLayout = qt.QFormLayout(layerCheckerboardCollapsibleButton)
+
+    self.layerCheckerboardCheck = qt.QCheckBox()
+    layerCheckerboardFormLayout.addRow("Layer Checkerboard Popup", self.layerCheckerboardCheck)
+    self.layerCheckerboardCheck.connect("toggled(bool)", self.onLayerCheckerboardToggled)
 
     # Add vertical spacer
     self.layout.addStretch(1)
 
-  def onRefOn(self):
-    logic = CompareVolumesLogic()
-    print("ref on")
-    fiducial = slicer.util.getNode('*FiducialNode*')
-    target = self.inputSelector.currentNode()
-    logic.referenceCursors(fiducial,target)
-
-  def onRefOff(self):
-    logic = CompareVolumesLogic()
-    print("ref off")
-    logic.clearCursors()
+  def onLayerCheckerboardToggled(self):
+    if self.layerCheckerboardCheck.checked:
+      self.layerCheckerboard = LayerCheckerboard()
+    else:
+      self.layerCheckerboard.tearDown()
+      self.layerCheckerboard = None
 
   def onReload(self,moduleName="CompareVolumes"):
     """Generic reload method for any scripted module.
@@ -176,16 +180,16 @@ class CompareVolumesWidget:
         'globals()["%s"].%s(parent)' % (moduleName, widgetName))
     globals()[widgetName.lower()].setup()
 
-  def onReloadAndTest(self,moduleName="CompareVolumes"):
+  def onReloadAndTest(self,moduleName="CompareVolumes",scenario=None):
     try:
       self.onReload()
       evalString = 'globals()["%s"].%sTest()' % (moduleName, moduleName)
       tester = eval(evalString)
-      tester.runTest()
+      tester.runTest(scenario=scenario)
     except Exception, e:
       import traceback
       traceback.print_exc()
-      qt.QMessageBox.warning(slicer.util.mainWindow(), 
+      qt.QMessageBox.warning(slicer.util.mainWindow(),
           "Reload and Test", 'Exception!\n\n' + str(e) + "\n\nSee Python Console for Stack Trace")
 
 
@@ -194,8 +198,8 @@ class CompareVolumesWidget:
 #
 
 class CompareVolumesLogic:
-  """This class should implement all the actual 
-  computation done by your module.  The interface 
+  """This class should implement all the actual
+  computation done by your module.  The interface
   should be such that other python code can import
   this class and make use of the functionality without
   requiring an instance of the Widget
@@ -225,7 +229,7 @@ class CompareVolumesLogic:
     """ Load each volume in the scene into its own
     slice viewer and link them all together.
     If background is specified, put it in the background
-    of all viewers and make the other volumes be the 
+    of all viewers and make the other volumes be the
     forground.  If label is specified, make it active as
     the label layer of all viewers.
     Return a map of slice nodes indexed by the view name (given or generated).
@@ -238,7 +242,7 @@ class CompareVolumesLogic:
     if len(volumeNodes) == 0:
       return
 
-    # make an array with wide screen aspect ratio 
+    # make an array with wide screen aspect ratio
     # - e.g. 3 volumes in 3x1 grid
     # - 5 volumes 3x2 with only two volumes in second row
     c = 1.5 * math.sqrt(len(volumeNodes))
@@ -280,7 +284,7 @@ class CompareVolumesLogic:
     # let the widgets all decide how big they should be
     slicer.app.processEvents()
 
-    # if background is specified, move it to the front of the list: 
+    # if background is specified, move it to the front of the list:
     #  it will show up in first slice view with itself as in foreground
     if background:
       volumeNodes = [background] + [ i for i in volumeNodes if i != background]
@@ -294,7 +298,7 @@ class CompareVolumesLogic:
         volumeNodeID = volumeNodes[index].GetID()
       except IndexError:
         volumeNodeID = ""
-      
+
       sliceWidget = layoutManager.sliceWidget(viewName)
       compositeNode = sliceWidget.mrmlSliceCompositeNode()
       if background:
@@ -302,7 +306,7 @@ class CompareVolumesLogic:
         compositeNode.SetForegroundVolumeID(volumeNodeID)
       else:
         compositeNode.SetBackgroundVolumeID(volumeNodeID)
-        
+
       if label:
         compositeNode.SetLabelVolumeID(label.GetID())
 
@@ -321,7 +325,7 @@ class CompareVolumesLogic:
     numLogics = sliceLogics.GetNumberOfItems()
     for n in range(numLogics):
       l = sliceLogics.GetItemAsObject(n)
-      l.SnapSliceOffsetToIJK() 
+      l.SnapSliceOffsetToIJK()
 
   def zoom(self,factor,sliceNodes=None):
     """Zoom slice nodes by factor.
@@ -347,7 +351,7 @@ class CompareVolumesLogic:
     """ Make an axi/sag/cor(/3D) row of viewers
     for each volume in the scene.
     If background is specified, put it in the background
-    of all viewers and make the other volumes be the 
+    of all viewers and make the other volumes be the
     forground.  If label is specified, make it active as
     the label layer of all viewers.
     Return a map of slice nodes indexed by the view name (given or generated).
@@ -407,6 +411,206 @@ class CompareVolumesLogic:
         sliceNodesByViewName[viewName] = sliceNode
     return sliceNodesByViewName
 
+class ViewWatcher(object):
+  """A helper class to manage observers on slice views"""
+
+  def __init__(self):
+    # the currentLayoutName is tag on the slice node that corresponds
+    # view which should currently be shown in the DataProbe window.
+    # Keeping track of this allows us to respond to non-interactor updates
+    # to the slice (like from an external tracker) but only in the view where
+    # the mouse has most recently entered.
+    self.currentLayoutName = None
+
+    # Default observer priority is 0.0, and the widgets have a 0.5 priority
+    # so we set this to 1 in order to get events that would
+    # otherwise be swallowed.  Since we do not abort the event, this is harmless.
+    self.priority = 2
+
+    # keep list of pairs: [observee,tag] so they can be removed easily
+    self.observerTags = []
+    # keep a map of interactor styles to sliceWidgets so we can easily get sliceLogic
+    self.sliceWidgetsPerStyle = {}
+    self.refreshObservers()
+
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.connect('layoutChanged(int)', self.refreshObservers)
+
+  def __del__(self):
+    self.tearDown()
+
+  def removeObservers(self):
+    # remove observers and reset
+    for observee,tag in self.observerTags:
+      observee.RemoveObserver(tag)
+    self.observerTags = []
+    self.sliceWidgetsPerStyle = {}
+
+  def refreshObservers(self):
+    """ When the layout changes, drop the observers from
+    all the old widgets and create new observers for the
+    newly created widgets"""
+    self.removeObservers()
+    # get new slice nodes
+    layoutManager = slicer.app.layoutManager()
+    sliceNodeCount = slicer.mrmlScene.GetNumberOfNodesByClass('vtkMRMLSliceNode')
+    for nodeIndex in xrange(sliceNodeCount):
+      # find the widget for each node in scene
+      sliceNode = slicer.mrmlScene.GetNthNodeByClass(nodeIndex, 'vtkMRMLSliceNode')
+      sliceWidget = layoutManager.sliceWidget(sliceNode.GetLayoutName())
+      if sliceWidget:
+        # add obserservers and keep track of tags
+        style = sliceWidget.sliceView().interactor()
+        self.sliceWidgetsPerStyle[style] = sliceWidget
+        events = ("MouseMoveEvent", "EnterEvent", "LeaveEvent")
+        for event in events:
+          tag = style.AddObserver(event, self.processEvent, self.priority)
+          self.observerTags.append([style,tag])
+        tag = sliceNode.AddObserver("ModifiedEvent", self.processEvent, self.priority)
+        self.observerTags.append([sliceNode,tag])
+        sliceLogic = sliceWidget.sliceLogic()
+        compositeNode = sliceLogic.GetSliceCompositeNode()
+        tag = compositeNode.AddObserver("ModifiedEvent", self.processEvent, self.priority)
+        self.observerTags.append([compositeNode,tag])
+
+
+  def processEvent(self,observee,event):
+    # TODO: use a timer to delay calculation and compress events
+    if event == 'LeaveEvent':
+      self.currentLayoutName = None
+      return
+    if event == 'EnterEvent':
+      sliceWidget = self.sliceWidgetsPerStyle[observee]
+      self.currentLayoutName = None
+      sliceLogic = sliceWidget.sliceLogic()
+      sliceNode = sliceWidget.mrmlSliceNode()
+      self.currentLayoutName = sliceNode.GetLayoutName()
+    nodeEvent = (observee.IsA('vtkMRMLSliceNode') or
+                observee.IsA('vtkMRMLSliceCompositeNode'))
+    if nodeEvent:
+      # for a slice node, get the corresponding style and
+      # set it as the observee so update is made for that sliceWidget
+      # if it is the current layout name
+      layoutManager = slicer.app.layoutManager()
+      sliceWidget = layoutManager.sliceWidget(observee.GetLayoutName())
+      if sliceWidget and observee.GetLayoutName() == self.currentLayoutName:
+        observee = sliceWidget.sliceView().interactor()
+    if self.sliceWidgetsPerStyle.has_key(observee):
+      self.sliceWidget = self.sliceWidgetsPerStyle[observee]
+      self.sliceLogic = self.sliceWidget.sliceLogic()
+      self.sliceNode = self.sliceWidget.mrmlSliceNode()
+      self.interactor = observee
+      self.xy = self.interactor.GetEventPosition()
+      self.xyz = self.sliceWidget.sliceView().convertDeviceToXYZ(self.xy);
+      self.ras = self.sliceWidget.sliceView().convertXYZToRAS(self.xyz)
+
+      self.layerLogics = {}
+      self.layerVolumeNodes = {}
+      layerLogicCalls = (('L', self.sliceLogic.GetLabelLayer),
+                         ('F', self.sliceLogic.GetForegroundLayer),
+                         ('B', self.sliceLogic.GetBackgroundLayer))
+      for layer,logicCall in layerLogicCalls:
+        self.layerLogics[layer] = logicCall()
+        self.layerVolumeNodes[layer] = self.layerLogics[layer].GetVolumeNode()
+
+      self.onSliceWidgetEvent(event)
+
+  def tearDown(self):
+    """Virtual method meant to be overridden by the subclass
+    Cleans up any observers (or widgets and other instances).
+    This is needed because __del__ does not reliably get called.
+    """
+    self.removeObservers()
+
+class LayerCheckerboard(ViewWatcher):
+  """Track the mouse and show a checkerboard view"""
+
+  def __init__(self,parent=None,width=400,height=400):
+    super(LayerCheckerboard,self).__init__()
+    self.width = width
+    self.height = height
+    self.frame = qt.QFrame(parent)
+    self.frameLayout = qt.QVBoxLayout(self.frame)
+    self.label = qt.QLabel()
+    self.frameLayout.addWidget(self.label)
+    self.updateLabelImage(None)
+    self.frame.show()
+
+  def updateLabelImage(self,qimage):
+    if not qimage:
+      self.label.text = "No image"
+      self.label.setPixmap(qt.QPixmap())
+    else:
+      self.label.text = ""
+      self.label.setPixmap(qt.QPixmap().fromImage(qimage))
+
+  def tearDown(self):
+    super(LayerCheckerboard,self).tearDown()
+    self.frame = None
+
+  def onSliceWidgetEvent(self,event):
+    """Virtual method meant to be overridden by the subclass"""
+    self.showCheckerboard(self.xy)
+
+  def showCheckerboard(self, xy):
+    """fill the label with an image that has a checkerboard pattern
+    at xy with the fg drawn over the bg"""
+
+    # Get QImages for the two layers
+    bgVTKImage = self.layerLogics['B'].GetImageData()
+    fgVTKImage = self.layerLogics['F'].GetImageData()
+    bgQImage = qt.QImage()
+    fgQImage = qt.QImage()
+    slicer.qMRMLUtils().vtkImageDataToQImage(bgVTKImage, bgQImage)
+    slicer.qMRMLUtils().vtkImageDataToQImage(fgVTKImage, fgQImage)
+
+    # get the geometry of the focal point (xy) and images
+    # noting that vtk has the origin at the bottom left and qt has
+    # it at the top left.  yy is the flipped version of y
+    imageWidth = bgQImage.width()
+    imageHeight = bgQImage.height()
+    x,y=xy
+    yy = imageHeight-y
+
+    # a painter to use for various jobs
+    painter = qt.QPainter()
+
+    #
+    # make a generally transparent image,
+    # then fill quarants with the fg image
+    #
+    overlayImage = qt.QImage(imageWidth, imageHeight, qt.QImage().Format_ARGB32)
+    overlayImage.fill(0)
+
+    halfWidth = imageWidth/2
+    halfHeight = imageHeight/2
+    topLeft = qt.QRect(0,0, x, yy)
+    bottomRight = qt.QRect(x, yy, imageWidth-x-1, imageHeight-yy-1)
+
+    painter.begin(overlayImage)
+    painter.drawImage(topLeft, fgQImage, topLeft)
+    painter.drawImage(bottomRight, fgQImage, bottomRight)
+    painter.end()
+
+    # draw the bg and fg on top of gray background
+    gray = qt.QColor()
+    gray.setRedF(0.5)
+    gray.setGreenF(0.5)
+    gray.setBlueF(0.5)
+    pixmap = qt.QPixmap(self.width,self.height)
+    pixmap.fill(gray)
+    painter.begin(pixmap)
+    painter.drawImage(
+        -1 * (x  -self.width/2),
+        -1 * (yy -self.height/2),
+        bgQImage)
+    painter.drawImage(
+        -1 * (x  -self.width/2),
+        -1 * (yy -self.height/2),
+        overlayImage)
+    painter.end()
+    self.label.setPixmap(pixmap)
+
 
 class CompareVolumesTest(unittest.TestCase):
   """
@@ -435,22 +639,22 @@ class CompareVolumesTest(unittest.TestCase):
     """
     slicer.mrmlScene.Clear(0)
 
-  def runTest(self):
+  def runTest(self,scenario=None):
     """Run as few or as many tests as needed here.
     """
     self.setUp()
-    self.test_CompareVolumes1()
+    if scenario == "Three Volume":
+      self.test_CompareVolumes1()
+    elif scenario == "View Watcher":
+      self.test_CompareVolumes2()
+    elif scenario == "LayerCheckerboard":
+      self.test_CompareVolumes3()
+    else:
+      self.test_CompareVolumes1()
+      self.test_CompareVolumes2()
 
   def test_CompareVolumes1(self):
-    """ Ideally you should have several levels of tests.  At the lowest level
-    tests sould exercise the functionality of the logic with different inputs
-    (both valid and invalid).  At higher levels your tests should emulate the
-    way the user would interact with your code and confirm that it still works
-    the way you intended.
-    One of the most important features of the tests is that it should alert other
-    developers when their changes will have an impact on the behavior of your
-    module.  For example, if a developer removes a feature that you depend on,
-    your test should break so they know that the feature is needed.
+    """ Test modes with 3 volumes.
     """
 
     self.delayDisplay("Starting the test")
@@ -491,3 +695,50 @@ class CompareVolumesTest(unittest.TestCase):
 
     self.delayDisplay('Test passed!')
 
+  def test_CompareVolumes2(self):
+    """
+    Test modes with view watcher class.
+    """
+
+    self.delayDisplay("Starting View Watcher test")
+
+    watcher = ViewWatcher()
+
+    # first with two volumes
+    import SampleData
+    sampleDataLogic = SampleData.SampleDataLogic()
+    head = sampleDataLogic.downloadMRHead()
+    brain = sampleDataLogic.downloadDTIBrain()
+    logic = CompareVolumesLogic()
+    logic.viewerPerVolume()
+    self.delayDisplay('Should be one row with two columns')
+    logic.viewerPerVolume(volumeNodes=(brain,head), viewNames=('brain', 'head'))
+    self.delayDisplay('Should be two columns, with names')
+
+    watcher.tearDown()
+
+    self.delayDisplay('Test passed!')
+
+  def test_CompareVolumes3(self):
+    """
+    Test LayerCheckerboard
+    """
+
+    self.delayDisplay("Starting LayerCheckerboard test")
+
+    checkerboard = LayerCheckerboard()
+
+    # first with two volumes
+    import SampleData
+    sampleDataLogic = SampleData.SampleDataLogic()
+    head = sampleDataLogic.downloadMRHead()
+    brain = sampleDataLogic.downloadDTIBrain()
+    logic = CompareVolumesLogic()
+    logic.viewerPerVolume()
+    self.delayDisplay('Should be one row with two columns')
+    logic.viewerPerVolume(volumeNodes=(brain,head), viewNames=('brain', 'head'))
+    self.delayDisplay('Should be two columns, with names')
+
+    checkerboard.tearDown()
+
+    self.delayDisplay('Test passed!')
