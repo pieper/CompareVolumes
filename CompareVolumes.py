@@ -433,6 +433,9 @@ class ViewWatcher(object):
     self.sliceWidgetsPerStyle = {}
     self.refreshObservers()
 
+    # saved cursor for restoring custom after overlays
+    self.savedCursor = None
+
     layoutManager = slicer.app.layoutManager()
     layoutManager.connect('layoutChanged(int)', self.refreshObservers)
 
@@ -460,7 +463,7 @@ class ViewWatcher(object):
       sliceWidget = layoutManager.sliceWidget(sliceNode.GetLayoutName())
       if sliceWidget:
         # add obserservers and keep track of tags
-        style = sliceWidget.sliceView().interactor()
+        style = sliceWidget.sliceView().interactorStyle().GetInteractor()
         self.sliceWidgetsPerStyle[style] = sliceWidget
         events = ("MouseMoveEvent", "EnterEvent", "LeaveEvent")
         for event in events:
@@ -475,10 +478,8 @@ class ViewWatcher(object):
 
 
   def processEvent(self,observee,event):
-    # TODO: use a timer to delay calculation and compress events
     if event == 'LeaveEvent':
       self.currentLayoutName = None
-      return
     if event == 'EnterEvent':
       sliceWidget = self.sliceWidgetsPerStyle[observee]
       self.currentLayoutName = None
@@ -497,6 +498,7 @@ class ViewWatcher(object):
         observee = sliceWidget.sliceView().interactor()
     if self.sliceWidgetsPerStyle.has_key(observee):
       self.sliceWidget = self.sliceWidgetsPerStyle[observee]
+      self.sliceView = self.sliceWidget.sliceView()
       self.sliceLogic = self.sliceWidget.sliceLogic()
       self.sliceNode = self.sliceWidget.mrmlSliceNode()
       self.interactor = observee
@@ -522,38 +524,87 @@ class ViewWatcher(object):
     """
     self.removeObservers()
 
+  def cursorOff(self,widget):
+    """Turn off and save the current cursor so
+    the user can see an overlay that tracks the mouse"""
+    self.savedCursor = widget.cursor
+    qt_BlankCursor = 10
+    widget.setCursor(qt.QCursor(qt_BlankCursor))
+
+  def cursorOn(self,widget):
+    """Restore the saved cursor if it exists, otherwise
+    just restore the default cursor"""
+    if self.savedCursor:
+      widget.setCursor(self.savedCursor)
+    else:
+      widget.unsetCursor()
+
 class LayerCheckerboard(ViewWatcher):
   """Track the mouse and show a checkerboard view"""
 
-  def __init__(self,parent=None,width=400,height=400):
+  def __init__(self,parent=None,width=400,height=400,showWidget=False):
     super(LayerCheckerboard,self).__init__()
     self.width = width
     self.height = height
-    self.frame = qt.QFrame(parent)
-    self.frameLayout = qt.QVBoxLayout(self.frame)
-    self.label = qt.QLabel()
-    self.frameLayout.addWidget(self.label)
-    self.updateLabelImage(None)
-    self.frame.show()
+    self.showWidget = showWidget
 
-  def updateLabelImage(self,qimage):
-    if not qimage:
-      self.label.text = "No image"
-      self.label.setPixmap(qt.QPixmap())
-    else:
-      self.label.text = ""
-      self.label.setPixmap(qt.QPixmap().fromImage(qimage))
+    # make a qwidget display
+    if self.showWidget:
+      self.frame = qt.QFrame(parent)
+      mw = slicer.util.mainWindow()
+      self.frame.setGeometry(mw.x, mw.y, self.width, self.height)
+      self.frameLayout = qt.QVBoxLayout(self.frame)
+      self.label = qt.QLabel()
+      self.frameLayout.addWidget(self.label)
+      self.frame.show()
+
+    # make an image actor in the slice view
+    self.vtkImage = vtk.vtkImageData()
+
+    self.mrmlUtils = slicer.qMRMLUtils()
+    self.imageMapper = vtk.vtkImageMapper()
+    self.imageMapper.SetColorLevel(128)
+    self.imageMapper.SetColorWindow(255)
+    self.imageMapper.SetInput(self.vtkImage)
+    self.actor2D = vtk.vtkActor2D()
+    self.actor2D.SetMapper(self.imageMapper)
 
   def tearDown(self):
     super(LayerCheckerboard,self).tearDown()
+    # clean up widget
     self.frame = None
+    # clean up image actor
+    self.renderer.RemoveActor(self.actor2D)
+    self.sliceView.scheduleRender()
 
   def onSliceWidgetEvent(self,event):
-    """Virtual method meant to be overridden by the subclass"""
-    self.showCheckerboard(self.xy)
+    """Update checkerboard displays"""
+    checkerboardPixmap = self.checkerboardPixmap(self.xy)
 
-  def showCheckerboard(self, xy):
-    """fill the label with an image that has a checkerboard pattern
+    #widget
+    if self.showWidget:
+      self.label.setPixmap(checkerboardPixmap)
+
+    # actor
+    self.renderWindow = self.sliceView.renderWindow()
+    self.renderer = self.renderWindow.GetRenderers().GetItemAsObject(0)
+
+    if event == "LeaveEvent" or not self.layerVolumeNodes['F']:
+      self.renderer.RemoveActor(self.actor2D)
+      self.cursorOn(self.sliceWidget)
+    elif event == "EnterEvent":
+      self.renderer.AddActor2D(self.actor2D)
+      if self.layerVolumeNodes['F']:
+        self.cursorOff(self.sliceWidget)
+    else:
+      self.mrmlUtils.qImageToVtkImageData(checkerboardPixmap.toImage(),self.vtkImage)
+      self.imageMapper.SetInput(self.vtkImage)
+      x,y = self.xy
+      self.actor2D.SetPosition(x-self.width/2,y-self.height/2)
+    self.sliceView.forceRender()
+
+  def checkerboardPixmap(self, xy):
+    """fill a pixmap with an image that has a checkerboard pattern
     at xy with the fg drawn over the bg"""
 
     # Get QImages for the two layers
@@ -597,9 +648,9 @@ class LayerCheckerboard(ViewWatcher):
     gray.setRedF(0.5)
     gray.setGreenF(0.5)
     gray.setBlueF(0.5)
-    pixmap = qt.QPixmap(self.width,self.height)
-    pixmap.fill(gray)
-    painter.begin(pixmap)
+    compositePixmap = qt.QPixmap(self.width,self.height)
+    compositePixmap.fill(gray)
+    painter.begin(compositePixmap)
     painter.drawImage(
         -1 * (x  -self.width/2),
         -1 * (yy -self.height/2),
@@ -609,7 +660,22 @@ class LayerCheckerboard(ViewWatcher):
         -1 * (yy -self.height/2),
         overlayImage)
     painter.end()
-    self.label.setPixmap(pixmap)
+
+    # extract the center of the pixmap and then zoom
+    halfWidth = self.width/2
+    halfHeight = self.height/2
+    quarterWidth = self.width/4
+    quarterHeight = self.height/4
+    centerPixmap = qt.QPixmap(halfWidth,halfHeight)
+    centerPixmap.fill(gray)
+    painter.begin(centerPixmap)
+    fullRect = qt.QRect(0,0,halfWidth,halfHeight)
+    centerRect = qt.QRect(quarterWidth, quarterHeight, halfWidth, halfHeight)
+    painter.drawPixmap(fullRect, compositePixmap, centerRect)
+    painter.end()
+    zoomedPixmap = centerPixmap.scaled(self.width, self.height)
+
+    return zoomedPixmap
 
 
 class CompareVolumesTest(unittest.TestCase):
