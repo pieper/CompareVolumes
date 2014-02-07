@@ -55,7 +55,7 @@ class CompareVolumesWidget:
     if not parent:
       self.setup()
       self.parent.show()
-    self.layerCheckerboard = None
+    self.layerReveal = None
 
   def setup(self):
     # Instantiate and connect widgets ...
@@ -86,7 +86,7 @@ class CompareVolumesWidget:
     self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
 
     # reload and run specific tests
-    scenarios = ("Three Volume", "View Watcher", "LayerCheckerboard",)
+    scenarios = ("Three Volume", "View Watcher", "LayerReveal",)
     for scenario in scenarios:
       button = qt.QPushButton("Reload and Test %s" % scenario)
       self.reloadAndTestButton.toolTip = "Reload this module and then run the %s self test." % scenario
@@ -120,26 +120,26 @@ class CompareVolumesWidget:
     parametersFormLayout.addRow("Target Volume: ", self.inputSelector)
 
     #
-    # Add layer checkerboard area
+    # Add layer reveal area
     #
-    layerCheckerboardCollapsibleButton = ctk.ctkCollapsibleButton()
-    layerCheckerboardCollapsibleButton.text = "Layer Checkerboard Popup"
-    self.layout.addWidget(layerCheckerboardCollapsibleButton)
-    layerCheckerboardFormLayout = qt.QFormLayout(layerCheckerboardCollapsibleButton)
+    layerRevealCollapsibleButton = ctk.ctkCollapsibleButton()
+    layerRevealCollapsibleButton.text = "Layer Reveal Cursor"
+    self.layout.addWidget(layerRevealCollapsibleButton)
+    layerRevealFormLayout = qt.QFormLayout(layerRevealCollapsibleButton)
 
-    self.layerCheckerboardCheck = qt.QCheckBox()
-    layerCheckerboardFormLayout.addRow("Layer Checkerboard Popup", self.layerCheckerboardCheck)
-    self.layerCheckerboardCheck.connect("toggled(bool)", self.onLayerCheckerboardToggled)
+    self.layerRevealCheck = qt.QCheckBox()
+    layerRevealFormLayout.addRow("Layer Reveal Cursor", self.layerRevealCheck)
+    self.layerRevealCheck.connect("toggled(bool)", self.onLayerRevealToggled)
 
     # Add vertical spacer
     self.layout.addStretch(1)
 
-  def onLayerCheckerboardToggled(self):
-    if self.layerCheckerboardCheck.checked:
-      self.layerCheckerboard = LayerCheckerboard()
+  def onLayerRevealToggled(self):
+    if self.layerRevealCheck.checked:
+      self.layerReveal = LayerReveal()
     else:
-      self.layerCheckerboard.tearDown()
-      self.layerCheckerboard = None
+      self.layerReveal.tearDown()
+      self.layerReveal = None
 
   def onReload(self,moduleName="CompareVolumes"):
     """Generic reload method for any scripted module.
@@ -439,6 +439,19 @@ class ViewWatcher(object):
     layoutManager = slicer.app.layoutManager()
     layoutManager.connect('layoutChanged(int)', self.refreshObservers)
 
+    # instance variables filled in by processEvent
+    self.sliceWidget = None
+    self.sliceView = None
+    self.sliceLogic = None
+    self.sliceNode = None
+    self.interactor = None
+    self.xy = (0,0)
+    self.xyz = (0,0,0)
+    self.ras = (0,0,0)
+    self.layerLogics = {}
+    self.layerVolumeNodes = {}
+    self.savedWidget = None
+
   def __del__(self):
     self.tearDown()
 
@@ -517,36 +530,60 @@ class ViewWatcher(object):
 
       self.onSliceWidgetEvent(event)
 
+  def onSliceWidgetEvent(self,event):
+    """ virtual method called when an event occurs
+    on a slice widget.  The instance variables of the class
+    will have been filled by the processEvent method above
+    """
+    pass
+
   def tearDown(self):
     """Virtual method meant to be overridden by the subclass
     Cleans up any observers (or widgets and other instances).
     This is needed because __del__ does not reliably get called.
     """
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.disconnect('layoutChanged(int)', self.refreshObservers)
     self.removeObservers()
+    print('torn down')
 
   def cursorOff(self,widget):
     """Turn off and save the current cursor so
     the user can see an overlay that tracks the mouse"""
+    self.savedWidget = widget
     self.savedCursor = widget.cursor
     qt_BlankCursor = 10
     widget.setCursor(qt.QCursor(qt_BlankCursor))
 
-  def cursorOn(self,widget):
+  def cursorOn(self):
     """Restore the saved cursor if it exists, otherwise
     just restore the default cursor"""
-    if self.savedCursor:
-      widget.setCursor(self.savedCursor)
-    else:
-      widget.unsetCursor()
+    if self.savedWidget:
+      if self.savedCursor:
+        self.savedWidget.setCursor(self.savedCursor)
+      else:
+        self.savedWidget.unsetCursor()
+    self.savedWidget = None
 
-class LayerCheckerboard(ViewWatcher):
-  """Track the mouse and show a checkerboard view"""
+class LayerReveal(ViewWatcher):
+  """Track the mouse and show a reveal view"""
 
-  def __init__(self,parent=None,width=400,height=400,showWidget=False):
-    super(LayerCheckerboard,self).__init__()
+  def __init__(self,parent=None,width=400,height=400,showWidget=False,scale=False):
+    super(LayerReveal,self).__init__()
     self.width = width
     self.height = height
     self.showWidget = showWidget
+    self.scale = scale
+    self.renderer = None
+
+    # utility Qt instances for use in methods
+    self.gray = qt.QColor()
+    self.gray.setRedF(0.5)
+    self.gray.setGreenF(0.5)
+    self.gray.setBlueF(0.5)
+    # a painter to use for various jobs
+    self.painter = qt.QPainter()
+
 
     # make a qwidget display
     if self.showWidget:
@@ -570,20 +607,23 @@ class LayerCheckerboard(ViewWatcher):
     self.actor2D.SetMapper(self.imageMapper)
 
   def tearDown(self):
-    super(LayerCheckerboard,self).tearDown()
     # clean up widget
     self.frame = None
     # clean up image actor
-    self.renderer.RemoveActor(self.actor2D)
-    self.sliceView.scheduleRender()
+    if self.renderer:
+      self.renderer.RemoveActor(self.actor2D)
+    self.cursorOn()
+    if self.sliceView:
+      self.sliceView.scheduleRender()
+    super(LayerReveal,self).tearDown()
 
   def onSliceWidgetEvent(self,event):
-    """Update checkerboard displays"""
-    checkerboardPixmap = self.checkerboardPixmap(self.xy)
+    """Update reveal displays"""
+    revealPixmap = self.revealPixmap(self.xy)
 
     #widget
     if self.showWidget:
-      self.label.setPixmap(checkerboardPixmap)
+      self.label.setPixmap(revealPixmap)
 
     # actor
     self.renderWindow = self.sliceView.renderWindow()
@@ -591,20 +631,21 @@ class LayerCheckerboard(ViewWatcher):
 
     if event == "LeaveEvent" or not self.layerVolumeNodes['F']:
       self.renderer.RemoveActor(self.actor2D)
-      self.cursorOn(self.sliceWidget)
+      self.cursorOn()
+      self.sliceView.forceRender()
     elif event == "EnterEvent":
       self.renderer.AddActor2D(self.actor2D)
-      if self.layerVolumeNodes['F']:
+      if self.layerVolumeNodes['F'] and (self.layerVolumeNodes['F'] != self.layerVolumeNodes['B']):
         self.cursorOff(self.sliceWidget)
     else:
-      self.mrmlUtils.qImageToVtkImageData(checkerboardPixmap.toImage(),self.vtkImage)
+      self.mrmlUtils.qImageToVtkImageData(revealPixmap.toImage(),self.vtkImage)
       self.imageMapper.SetInput(self.vtkImage)
       x,y = self.xy
       self.actor2D.SetPosition(x-self.width/2,y-self.height/2)
-    self.sliceView.forceRender()
+      self.sliceView.forceRender()
 
-  def checkerboardPixmap(self, xy):
-    """fill a pixmap with an image that has a checkerboard pattern
+  def revealPixmap(self, xy):
+    """fill a pixmap with an image that has a reveal pattern
     at xy with the fg drawn over the bg"""
 
     # Get QImages for the two layers
@@ -623,12 +664,9 @@ class LayerCheckerboard(ViewWatcher):
     x,y=xy
     yy = imageHeight-y
 
-    # a painter to use for various jobs
-    painter = qt.QPainter()
-
     #
     # make a generally transparent image,
-    # then fill quarants with the fg image
+    # then fill quadrants with the fg image
     #
     overlayImage = qt.QImage(imageWidth, imageHeight, qt.QImage().Format_ARGB32)
     overlayImage.fill(0)
@@ -638,44 +676,59 @@ class LayerCheckerboard(ViewWatcher):
     topLeft = qt.QRect(0,0, x, yy)
     bottomRight = qt.QRect(x, yy, imageWidth-x-1, imageHeight-yy-1)
 
-    painter.begin(overlayImage)
-    painter.drawImage(topLeft, fgQImage, topLeft)
-    painter.drawImage(bottomRight, fgQImage, bottomRight)
-    painter.end()
+    self.painter.begin(overlayImage)
+    self.painter.drawImage(topLeft, fgQImage, topLeft)
+    self.painter.drawImage(bottomRight, fgQImage, bottomRight)
+    self.painter.end()
 
     # draw the bg and fg on top of gray background
-    gray = qt.QColor()
-    gray.setRedF(0.5)
-    gray.setGreenF(0.5)
-    gray.setBlueF(0.5)
     compositePixmap = qt.QPixmap(self.width,self.height)
-    compositePixmap.fill(gray)
-    painter.begin(compositePixmap)
-    painter.drawImage(
+    compositePixmap.fill(self.gray)
+    self.painter.begin(compositePixmap)
+    self.painter.drawImage(
         -1 * (x  -self.width/2),
         -1 * (yy -self.height/2),
         bgQImage)
-    painter.drawImage(
+    self.painter.drawImage(
         -1 * (x  -self.width/2),
         -1 * (yy -self.height/2),
         overlayImage)
-    painter.end()
+    self.painter.end()
 
+    if self.scale:
+      compositePixmap = self.scalePixmap(compositePixmap)
+
+    # draw a border around the pixmap
+    self.painter.begin(compositePixmap)
+    self.pen = qt.QPen()
+    self.color = qt.QColor("#FF0")
+    self.color.setAlphaF(0.3)
+    self.pen.setColor(self.color)
+    self.pen.setWidth(5)
+    self.pen.setStyle(3) # dotted line (Qt::DotLine)
+    self.painter.setPen(self.pen)
+    rect = qt.QRect(1, 1, self.width-2, self.height-2)
+    self.painter.drawRect(rect)
+    self.painter.end()
+
+    return compositePixmap
+
+  def scalePixmap(self,pixmap):
     # extract the center of the pixmap and then zoom
     halfWidth = self.width/2
     halfHeight = self.height/2
     quarterWidth = self.width/4
     quarterHeight = self.height/4
     centerPixmap = qt.QPixmap(halfWidth,halfHeight)
-    centerPixmap.fill(gray)
-    painter.begin(centerPixmap)
+    centerPixmap.fill(self.gray)
+    self.painter.begin(centerPixmap)
     fullRect = qt.QRect(0,0,halfWidth,halfHeight)
     centerRect = qt.QRect(quarterWidth, quarterHeight, halfWidth, halfHeight)
-    painter.drawPixmap(fullRect, compositePixmap, centerRect)
-    painter.end()
-    zoomedPixmap = centerPixmap.scaled(self.width, self.height)
+    self.painter.drawPixmap(fullRect, pixmap, centerRect)
+    self.painter.end()
+    scaledPixmap = centerPixmap.scaled(self.width, self.height)
 
-    return zoomedPixmap
+    return scaledPixmap
 
 
 class CompareVolumesTest(unittest.TestCase):
@@ -704,6 +757,9 @@ class CompareVolumesTest(unittest.TestCase):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
     """
     slicer.mrmlScene.Clear(0)
+    m = slicer.util.mainWindow()
+    # go to the models module
+    m.moduleSelector().selectModule('CompareVolumes')
 
   def runTest(self,scenario=None):
     """Run as few or as many tests as needed here.
@@ -713,7 +769,7 @@ class CompareVolumesTest(unittest.TestCase):
       self.test_CompareVolumes1()
     elif scenario == "View Watcher":
       self.test_CompareVolumes2()
-    elif scenario == "LayerCheckerboard":
+    elif scenario == "LayerReveal":
       self.test_CompareVolumes3()
     else:
       self.test_CompareVolumes1()
@@ -787,24 +843,28 @@ class CompareVolumesTest(unittest.TestCase):
 
   def test_CompareVolumes3(self):
     """
-    Test LayerCheckerboard
+    Test LayerReveal
+
+    From the python console:
+slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer.modules.CompareVolumesWidget.onReloadAndTest(scenario="LayerReveal"); reveal = LayerReveal()
     """
 
-    self.delayDisplay("Starting LayerCheckerboard test")
+    self.delayDisplay("Starting LayerReveal test")
 
-    checkerboard = LayerCheckerboard()
+    reveal = LayerReveal()
 
     # first with two volumes
     import SampleData
     sampleDataLogic = SampleData.SampleDataLogic()
     head = sampleDataLogic.downloadMRHead()
-    brain = sampleDataLogic.downloadDTIBrain()
+    dti = sampleDataLogic.downloadDTIBrain()
+    tumor = sampleDataLogic.downloadMRBrainTumor1()
     logic = CompareVolumesLogic()
     logic.viewerPerVolume()
     self.delayDisplay('Should be one row with two columns')
-    logic.viewerPerVolume(volumeNodes=(brain,head), viewNames=('brain', 'head'))
-    self.delayDisplay('Should be two columns, with names')
+    logic.viewerPerVolume(volumeNodes=(dti,tumor,head), background=dti, viewNames=('dti', 'tumor', 'head'))
+    self.delayDisplay('Should be two columns, with dti in foreground')
 
-    checkerboard.tearDown()
+    reveal.tearDown()
 
     self.delayDisplay('Test passed!')
