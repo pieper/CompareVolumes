@@ -851,7 +851,6 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
 
     self.delayDisplay("Starting LayerReveal test")
 
-    reveal = LayerReveal()
 
     # first with two volumes
     import SampleData
@@ -862,9 +861,33 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
     logic = CompareVolumesLogic()
     logic.viewerPerVolume()
     self.delayDisplay('Should be one row with two columns')
-    logic.viewerPerVolume(volumeNodes=(dti,tumor,head), background=dti, viewNames=('dti', 'tumor', 'head'))
-    self.delayDisplay('Should be two columns, with dti in foreground')
+    logic.viewerPerVolume(volumeNodes=(dti,tumor,head),
+                            background=dti, viewNames=('dti', 'tumor', 'head'))
+    self.delayDisplay('Should be three columns, with dti in foreground')
 
-    reveal.tearDown()
+    # the name of the view was givein the the call to viewerPerVolume above.
+    # here we ask the layoutManager to give us the corresponding sliceWidget
+    # from which we can get the interactorStyle so we can simulate events
+    layoutManager = slicer.app.layoutManager()
+    sliceWidget = layoutManager.sliceWidget('head')
+    style = sliceWidget.sliceView().interactorStyle().GetInteractor()
+
+    for scale in (False,True):
+      for size in (100,400):
+        # create a reveal cursor to test
+        reveal = LayerReveal(width=size,height=size,scale=scale)
+        reveal.processEvent(style, "EnterEvent")
+        steps = 300
+        for step in range(0,steps):
+          t = step/float(steps)
+          px = int(t * sliceWidget.width)
+          py = int(t * sliceWidget.height)
+          style.SetEventPosition(px,py)
+          reveal.processEvent(style, "MouseMoveEvent")
+        reveal.processEvent(style, "LeaveEvent")
+        reveal.tearDown()
+
+    self.delayDisplay('Should have just seen reveal cursor move through head view')
+
 
     self.delayDisplay('Test passed!')
