@@ -545,7 +545,6 @@ class ViewWatcher(object):
     layoutManager = slicer.app.layoutManager()
     layoutManager.disconnect('layoutChanged(int)', self.refreshObservers)
     self.removeObservers()
-    print('torn down')
 
   def cursorOff(self,widget):
     """Turn off and save the current cursor so
