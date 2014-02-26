@@ -756,9 +756,6 @@ class CompareVolumesTest(unittest.TestCase):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
     """
     slicer.mrmlScene.Clear(0)
-    m = slicer.util.mainWindow()
-    # go to the models module
-    m.moduleSelector().selectModule('CompareVolumes')
 
   def runTest(self,scenario=None):
     """Run as few or as many tests as needed here.
@@ -777,6 +774,9 @@ class CompareVolumesTest(unittest.TestCase):
   def test_CompareVolumes1(self):
     """ Test modes with 3 volumes.
     """
+
+    m = slicer.util.mainWindow()
+    m.moduleSelector().selectModule('CompareVolumes')
 
     self.delayDisplay("Starting the test")
 
@@ -820,6 +820,9 @@ class CompareVolumesTest(unittest.TestCase):
     """
     Test modes with view watcher class.
     """
+
+    m = slicer.util.mainWindow()
+    m.moduleSelector().selectModule('CompareVolumes')
 
     self.delayDisplay("Starting View Watcher test")
 
@@ -887,6 +890,5 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
         reveal.tearDown()
 
     self.delayDisplay('Should have just seen reveal cursor move through head view')
-
 
     self.delayDisplay('Test passed!')
