@@ -271,7 +271,7 @@ class CompareVolumesLogic:
         try:
           viewName = viewNames[index-1]
         except IndexError:
-          viewName = '%d-%d' % (row,column)
+          viewName = '%d_%d' % (row,column)
         rgb = [int(round(v*255)) for v in self.lookupTable.GetTableValue(index)[:-1]]
         color = '#%0.2X%0.2X%0.2X' % tuple(rgb)
         layoutDescription += self.sliceViewItemPattern.format(viewName=viewName,orientation=orientation,color=color)
