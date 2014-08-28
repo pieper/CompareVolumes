@@ -549,6 +549,10 @@ class ViewWatcher(object):
   def cursorOff(self,widget):
     """Turn off and save the current cursor so
     the user can see an overlay that tracks the mouse"""
+    if self.savedWidget == widget:
+      return
+    else:
+      self.cursorOn()
     self.savedWidget = widget
     self.savedCursor = widget.cursor
     qt_BlankCursor = 10
@@ -563,6 +567,7 @@ class ViewWatcher(object):
       else:
         self.savedWidget.unsetCursor()
     self.savedWidget = None
+    self.savedCursor = None
 
 class LayerReveal(ViewWatcher):
   """Track the mouse and show a reveal view"""
