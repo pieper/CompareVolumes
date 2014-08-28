@@ -107,14 +107,13 @@ class CompareVolumesWidget:
     # input volume selector
     #
     self.inputSelector = slicer.qMRMLNodeComboBox()
-    self.inputSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.inputSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 0 )
+    self.inputSelector.nodeTypes = ( ("vtkMRMLVolumeNode"), "" )
     self.inputSelector.selectNodeUponCreation = True
     self.inputSelector.addEnabled = False
     self.inputSelector.removeEnabled = False
     self.inputSelector.noneEnabled = False
     self.inputSelector.showHidden = False
-    self.inputSelector.showChildNodeTypes = False
+    self.inputSelector.showChildNodeTypes = True
     self.inputSelector.setMRMLScene( slicer.mrmlScene )
     self.inputSelector.setToolTip( "Pick the input to the algorithm." )
     parametersFormLayout.addRow("Target Volume: ", self.inputSelector)
@@ -131,6 +130,22 @@ class CompareVolumesWidget:
     layerRevealFormLayout.addRow("Layer Reveal Cursor", self.layerRevealCheck)
     self.layerRevealCheck.connect("toggled(bool)", self.onLayerRevealToggled)
 
+    #
+    # lightbox
+    #
+    lightboxCollapsibleButton = ctk.ctkCollapsibleButton()
+    lightboxCollapsibleButton.text = "Layer Reveal Cursor"
+    self.layout.addWidget(lightboxCollapsibleButton)
+    lightboxFormLayout = qt.QFormLayout(lightboxCollapsibleButton)
+
+    self.lightboxVolumeButton = qt.QPushButton("Lightbox Volume")
+    lightboxFormLayout.addRow(self.lightboxVolumeButton)
+    self.lightboxVolumeButton.connect("clicked()", self.onLightboxVolume)
+
+    self.lightboxVolumesButton = qt.QPushButton("Lightbox All Volumes")
+    lightboxFormLayout.addRow(self.lightboxVolumesButton)
+    self.lightboxVolumesButton.connect("clicked()", self.onLightboxVolumes)
+
     # Add vertical spacer
     self.layout.addStretch(1)
 
@@ -140,6 +155,15 @@ class CompareVolumesWidget:
     else:
       self.layerReveal.tearDown()
       self.layerReveal = None
+
+  def onLightboxVolume(self):
+    volumeNode = self.inputSelector.currentNode()
+    logic = CompareVolumesLogic()
+    logic.volumeLightbox(volumeNode,orientation="Axial")
+
+  def onLightboxVolumes(self):
+    logic = CompareVolumesLogic()
+    logic.viewerPerVolume()
 
   def onReload(self,moduleName="CompareVolumes"):
     """Generic reload method for any scripted module.
@@ -225,7 +249,7 @@ class CompareVolumesLogic:
       layoutNode.AddLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
     layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
 
-  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],orientation='Axial'):
+  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],layout=None,orientation='Axial'):
     """ Load each volume in the scene into its own
     slice viewer and link them all together.
     If background is specified, put it in the background
@@ -242,19 +266,23 @@ class CompareVolumesLogic:
     if len(volumeNodes) == 0:
       return
 
-    # make an array with wide screen aspect ratio
-    # - e.g. 3 volumes in 3x1 grid
-    # - 5 volumes 3x2 with only two volumes in second row
-    c = 1.5 * math.sqrt(len(volumeNodes))
-    columns = math.floor(c)
-    if c != columns:
-      columns += 1
-    if columns > len(volumeNodes):
-      columns = len(volumeNodes)
-    r = len(volumeNodes)/columns
-    rows = math.floor(r)
-    if r != rows:
-      rows += 1
+    if layout:
+      rows = layout[0]
+      columns = layout[1]
+    else:
+      # make an array with wide screen aspect ratio
+      # - e.g. 3 volumes in 3x1 grid
+      # - 5 volumes 3x2 with only two volumes in second row
+      c = 1.5 * math.sqrt(len(volumeNodes))
+      columns = math.floor(c)
+      if c != columns:
+        columns += 1
+      if columns > len(volumeNodes):
+        columns = len(volumeNodes)
+      r = len(volumeNodes)/columns
+      rows = math.floor(r)
+      if r != rows:
+        rows += 1
 
     #
     # construct the XML for the layout
@@ -409,6 +437,33 @@ class CompareVolumesLogic:
         sliceNode.SetOrientation(orientation)
         sliceWidget.fitSliceToBackground()
         sliceNodesByViewName[viewName] = sliceNode
+    return sliceNodesByViewName
+
+  def volumeLightbox(self,volumeNode,layout=[3,3],orientation='Axial',padRatio=.1):
+    """Display the given volumeNode in a single slice view
+    in lightbox with layout defining the number of rows and
+    colums in the given orientation.  The spacing of the lightbox
+    cells should span the volume range in RAS"""
+    # make a single viewer, just for this volume
+    views = layout[0] * layout[1]
+    sliceNodesByViewName = self.viewerPerVolume([volumeNode,]*views, layout=layout, orientation=orientation)
+    view = 0.
+    for viewName in sorted(sliceNodesByViewName.keys()):
+      sliceNode = sliceNodesByViewName[viewName]
+      sliceNode.RotateToVolumePlane(volumeNode)
+      layoutManager = slicer.app.layoutManager()
+      sliceWidget = layoutManager.sliceWidget(sliceNode.GetLayoutName())
+      sliceLogic = sliceWidget.sliceLogic()
+      bounds = [0,]*6
+      sliceLogic.GetLowestVolumeSliceBounds(bounds)
+      sliceRange = (bounds[5] - bounds[4])
+      slicePad = padRatio * sliceRange
+      paddedRange = sliceRange - 2*slicePad
+      lowBound = bounds[4] + slicePad
+      highBound = bounds[5] - slicePad
+      offset = lowBound + paddedRange * view / (views-1.)
+      sliceNode.SetSliceOffset(offset)
+      view += 1.
     return sliceNodesByViewName
 
 class ViewWatcher(object):
