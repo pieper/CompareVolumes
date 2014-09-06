@@ -1,4 +1,4 @@
-import os
+import os, string
 import unittest
 from __main__ import vtk, qt, ctk, slicer
 
@@ -13,16 +13,26 @@ class CompareVolumes:
     parent.dependencies = []
     parent.contributors = ["Steve Pieper (Isomics)"] # replace with "Firstname Lastname (Org)"
     parent.helpText = """
-    This module helps organize layouts and volume compositing to help compare images
     """
+    parent.helpText = string.Template("""
+    This module helps organize layouts and volume compositing to help compare images
+
+Please refer to <a href=\"$a/Documentation/$b.$c/Modules/CompareVolumes\"> the documentation</a>.
+
+    """).substitute({ 'a':parent.slicerWikiUrl, 'b':slicer.app.majorVersion, 'c':slicer.app.minorVersion })
     parent.acknowledgementText = """
     This file was originally developed by Steve Pieper, Isomics, Inc.
-    It was partially funded by NIH grant 3P41RR013218-12S1
-    and this work is part of the National Alliance for Medical Image
-    Computing (NAMIC), funded by the National Institutes of Health
+    It was partially funded by NIH grant 3P41RR013218-12S1 and P41 EB015902 the
+    Neuroimage Analysis Center (NAC) a Biomedical Technology Resource Center supported
+    by the National Institute of Biomedical Imaging and Bioengineering (NIBIB).
+    And this work is part of the "National Alliance for Medical Image
+    Computing" (NAMIC), funded by the National Institutes of Health
     through the NIH Roadmap for Medical Research, Grant U54 EB005149.
     Information on the National Centers for Biomedical Computing
     can be obtained from http://nihroadmap.nih.gov/bioinformatics.
+    This work is also supported by NIH grant 1R01DE024450-01A1
+    "Quantification of 3D Bony Changes in Temporomandibular Joint Osteoarthritis"
+    (TMJ-OA).
 """ # replace with organization, grant and thanks.
     self.parent = parent
 
@@ -45,6 +55,8 @@ class CompareVolumes:
 
 class CompareVolumesWidget:
   def __init__(self, parent = None):
+    settings = qt.QSettings()
+    self.developerMode = settings.value('Developer/DeveloperMode').lower() == 'true'
     if not parent:
       self.parent = slicer.qMRMLWidget()
       self.parent.setLayout(qt.QVBoxLayout())
@@ -60,38 +72,39 @@ class CompareVolumesWidget:
   def setup(self):
     # Instantiate and connect widgets ...
 
-    #
-    # Reload and Test area
-    #
-    reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-    reloadCollapsibleButton.text = "Reload && Test"
-    self.layout.addWidget(reloadCollapsibleButton)
-    reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
+    if self.developerMode:
+      #
+      # Reload and Test area
+      #
+      reloadCollapsibleButton = ctk.ctkCollapsibleButton()
+      reloadCollapsibleButton.text = "Reload && Test"
+      self.layout.addWidget(reloadCollapsibleButton)
+      reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
 
-    # reload button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadButton = qt.QPushButton("Reload")
-    self.reloadButton.toolTip = "Reload this module."
-    self.reloadButton.name = "CompareVolumes Reload"
-    reloadFormLayout.addWidget(self.reloadButton)
-    self.reloadButton.connect('clicked()', self.onReload)
+      # reload button
+      # (use this during development, but remove it when delivering
+      #  your module to users)
+      self.reloadButton = qt.QPushButton("Reload")
+      self.reloadButton.toolTip = "Reload this module."
+      self.reloadButton.name = "CompareVolumes Reload"
+      reloadFormLayout.addWidget(self.reloadButton)
+      self.reloadButton.connect('clicked()', self.onReload)
 
-    # reload and test button
-    # (use this during development, but remove it when delivering
-    #  your module to users)
-    self.reloadAndTestButton = qt.QPushButton("Reload and Test All")
-    self.reloadAndTestButton.toolTip = "Reload this module and then run the self tests."
-    reloadFormLayout.addWidget(self.reloadAndTestButton)
-    self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
+      # reload and test button
+      # (use this during development, but remove it when delivering
+      #  your module to users)
+      self.reloadAndTestButton = qt.QPushButton("Reload and Test All")
+      self.reloadAndTestButton.toolTip = "Reload this module and then run the self tests."
+      reloadFormLayout.addWidget(self.reloadAndTestButton)
+      self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
 
-    # reload and run specific tests
-    scenarios = ("Three Volume", "View Watcher", "LayerReveal",)
-    for scenario in scenarios:
-      button = qt.QPushButton("Reload and Test %s" % scenario)
-      self.reloadAndTestButton.toolTip = "Reload this module and then run the %s self test." % scenario
-      reloadFormLayout.addWidget(button)
-      button.connect('clicked()', lambda s=scenario: self.onReloadAndTest(scenario=s))
+      # reload and run specific tests
+      scenarios = ("Three Volume", "View Watcher", "LayerReveal",)
+      for scenario in scenarios:
+        button = qt.QPushButton("Reload and Test %s" % scenario)
+        self.reloadAndTestButton.toolTip = "Reload this module and then run the %s self test." % scenario
+        reloadFormLayout.addWidget(button)
+        button.connect('clicked()', lambda s=scenario: self.onReloadAndTest(scenario=s))
 
     #
     # Parameters Area
@@ -104,7 +117,24 @@ class CompareVolumesWidget:
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
     #
-    # input volume selector
+    # orientation
+    #
+    self.orientationBox = qt.QGroupBox("Orientation")
+    self.orientationBox.setLayout(qt.QFormLayout())
+    self.orientationButtons = {}
+    self.orientations = ("Axial", "Sagittal", "Coronal")
+    for orientation in self.orientations:
+      self.orientationButtons[orientation] = qt.QRadioButton()
+      self.orientationButtons[orientation].text = orientation
+      self.orientationButtons[orientation].connect("clicked()",
+                                lambda o=orientation: self.setOrientation(o))
+      self.orientationBox.layout().addWidget(
+                                self.orientationButtons[orientation])
+    parametersFormLayout.addWidget(self.orientationBox)
+    self.setOrientation(self.orientations[0])
+
+    #
+    # target volume selector
     #
     self.inputSelector = slicer.qMRMLNodeComboBox()
     self.inputSelector.nodeTypes = ( ("vtkMRMLVolumeNode"), "" )
@@ -119,6 +149,51 @@ class CompareVolumesWidget:
     parametersFormLayout.addRow("Target Volume: ", self.inputSelector)
 
     #
+    # lightbox
+    #
+    self.lightboxVolumeButton = qt.QPushButton("Lightbox Target Volume")
+    self.lightboxVolumeButton.setToolTip( "Make a set of slice views that span the extent of this study at equally spaced locations in the selected orientation." )
+    parametersFormLayout.addRow(self.lightboxVolumeButton)
+    self.lightboxVolumeButton.connect("clicked()", self.onLightboxVolume)
+
+    #
+    # background volume selector
+    #
+    self.backgroundSelector = slicer.qMRMLNodeComboBox()
+    self.backgroundSelector.nodeTypes = ( ("vtkMRMLVolumeNode"), "" )
+    self.backgroundSelector.selectNodeUponCreation = True
+    self.backgroundSelector.addEnabled = False
+    self.backgroundSelector.removeEnabled = False
+    self.backgroundSelector.noneEnabled = True
+    self.backgroundSelector.showHidden = False
+    self.backgroundSelector.showChildNodeTypes = True
+    self.backgroundSelector.setMRMLScene( slicer.mrmlScene )
+    self.backgroundSelector.setToolTip( "Common background - all lightbox panes will have this background and a different volume in each foreground." )
+    parametersFormLayout.addRow("Common Background Volume: ", self.backgroundSelector)
+
+    #
+    # label volume selector
+    #
+    self.labelSelector = slicer.qMRMLNodeComboBox()
+    self.labelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
+    self.labelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
+    self.labelSelector.selectNodeUponCreation = True
+    self.labelSelector.addEnabled = False
+    self.labelSelector.removeEnabled = False
+    self.labelSelector.noneEnabled = True
+    self.labelSelector.showHidden = False
+    self.labelSelector.showChildNodeTypes = True
+    self.labelSelector.setMRMLScene( slicer.mrmlScene )
+    self.labelSelector.setToolTip( "Common label - all lightbox panes will have this label on top." )
+    parametersFormLayout.addRow("Common Label Volume: ", self.labelSelector)
+
+
+    self.lightboxVolumesButton = qt.QPushButton("Lightbox All Volumes")
+    self.lightboxVolumesButton.setToolTip( "Make a set of slice views that show each of the currently loaded volumes, with optional companion volumes, in the selected orientation." )
+    parametersFormLayout.addRow(self.lightboxVolumesButton)
+    self.lightboxVolumesButton.connect("clicked()", self.onLightboxVolumes)
+
+    #
     # Add layer reveal area
     #
     layerRevealCollapsibleButton = ctk.ctkCollapsibleButton()
@@ -130,24 +205,13 @@ class CompareVolumesWidget:
     layerRevealFormLayout.addRow("Layer Reveal Cursor", self.layerRevealCheck)
     self.layerRevealCheck.connect("toggled(bool)", self.onLayerRevealToggled)
 
-    #
-    # lightbox
-    #
-    lightboxCollapsibleButton = ctk.ctkCollapsibleButton()
-    lightboxCollapsibleButton.text = "Layer Reveal Cursor"
-    self.layout.addWidget(lightboxCollapsibleButton)
-    lightboxFormLayout = qt.QFormLayout(lightboxCollapsibleButton)
-
-    self.lightboxVolumeButton = qt.QPushButton("Lightbox Volume")
-    lightboxFormLayout.addRow(self.lightboxVolumeButton)
-    self.lightboxVolumeButton.connect("clicked()", self.onLightboxVolume)
-
-    self.lightboxVolumesButton = qt.QPushButton("Lightbox All Volumes")
-    lightboxFormLayout.addRow(self.lightboxVolumesButton)
-    self.lightboxVolumesButton.connect("clicked()", self.onLightboxVolumes)
-
     # Add vertical spacer
     self.layout.addStretch(1)
+
+  def setOrientation(self,orientation):
+    if orientation in self.orientations:
+      self.selectedOrientation = orientation
+      self.orientationButtons[orientation].checked = True
 
   def onLayerRevealToggled(self):
     if self.layerRevealCheck.checked:
@@ -159,11 +223,15 @@ class CompareVolumesWidget:
   def onLightboxVolume(self):
     volumeNode = self.inputSelector.currentNode()
     logic = CompareVolumesLogic()
-    logic.volumeLightbox(volumeNode,orientation="Axial")
+    logic.volumeLightbox(volumeNode,orientation=self.selectedOrientation)
 
   def onLightboxVolumes(self):
     logic = CompareVolumesLogic()
-    logic.viewerPerVolume()
+    logic.viewerPerVolume(
+        orientation=self.selectedOrientation,
+        background=self.backgroundSelector.currentNode(),
+        label=self.labelSelector.currentNode(),
+        )
 
   def onReload(self,moduleName="CompareVolumes"):
     """Generic reload method for any scripted module.
@@ -249,7 +317,7 @@ class CompareVolumesLogic:
       layoutNode.AddLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
     layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
 
-  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],layout=None,orientation='Axial'):
+  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],layout=None,orientation='Axial',opacity=0.5):
     """ Load each volume in the scene into its own
     slice viewer and link them all together.
     If background is specified, put it in the background
@@ -257,6 +325,7 @@ class CompareVolumesLogic:
     forground.  If label is specified, make it active as
     the label layer of all viewers.
     Return a map of slice nodes indexed by the view name (given or generated).
+    Opacity applies only when background is selected.
     """
     import math
 
@@ -332,11 +401,15 @@ class CompareVolumesLogic:
       if background:
         compositeNode.SetBackgroundVolumeID(background.GetID())
         compositeNode.SetForegroundVolumeID(volumeNodeID)
+        compositeNode.SetForegroundOpacity(opacity)
       else:
         compositeNode.SetBackgroundVolumeID(volumeNodeID)
+        compositeNode.SetForegroundVolumeID("")
 
       if label:
         compositeNode.SetLabelVolumeID(label.GetID())
+      else:
+        compositeNode.SetLabelVolumeID("")
 
       sliceNode = sliceWidget.mrmlSliceNode()
       sliceNode.SetOrientation(orientation)
