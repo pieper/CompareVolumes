@@ -175,8 +175,7 @@ class CompareVolumesWidget:
     # label volume selector
     #
     self.labelSelector = slicer.qMRMLNodeComboBox()
-    self.labelSelector.nodeTypes = ( ("vtkMRMLScalarVolumeNode"), "" )
-    self.labelSelector.addAttribute( "vtkMRMLScalarVolumeNode", "LabelMap", 1 )
+    self.labelSelector.nodeTypes = ( ("vtkMRMLLabelMapVolumeNode"), "" )
     self.labelSelector.selectNodeUponCreation = True
     self.labelSelector.addEnabled = False
     self.labelSelector.removeEnabled = False
