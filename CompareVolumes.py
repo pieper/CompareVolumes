@@ -55,8 +55,7 @@ Please refer to <a href=\"$a/Documentation/$b.$c/Modules/CompareVolumes\"> the d
 
 class CompareVolumesWidget:
   def __init__(self, parent = None):
-    settings = qt.QSettings()
-    self.developerMode = settings.value('Developer/DeveloperMode').lower() == 'true'
+    self.developerMode = slicer.util.settingsValue('Developer/DeveloperMode', False, converter=slicer.util.toBool)
     if not parent:
       self.parent = slicer.qMRMLWidget()
       self.parent.setLayout(qt.QVBoxLayout())
