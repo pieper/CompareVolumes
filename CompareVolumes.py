@@ -1,3 +1,9 @@
+from __future__ import division
+from __future__ import print_function
+from builtins import str
+from builtins import range
+from past.utils import old_div
+from builtins import object
 import os, string
 import unittest
 from __main__ import vtk, qt, ctk, slicer
@@ -6,7 +12,7 @@ from __main__ import vtk, qt, ctk, slicer
 # CompareVolumes
 #
 
-class CompareVolumes:
+class CompareVolumes(object):
   def __init__(self, parent):
     parent.title = "Compare Volumes"
     parent.categories = ["Wizards"]
@@ -53,7 +59,7 @@ Please refer to <a href=\"$a/Documentation/$b.$c/Modules/CompareVolumes\"> the d
 # qCompareVolumesWidget
 #
 
-class CompareVolumesWidget:
+class CompareVolumesWidget(object):
   def __init__(self, parent = None):
     self.developerMode = slicer.util.settingsValue('Developer/DeveloperMode', False, converter=slicer.util.toBool)
     if not parent:
@@ -276,7 +282,7 @@ class CompareVolumesWidget:
       evalString = 'globals()["%s"].%sTest()' % (moduleName, moduleName)
       tester = eval(evalString)
       tester.runTest(scenario=scenario)
-    except Exception, e:
+    except Exception as e:
       import traceback
       traceback.print_exc()
       qt.QMessageBox.warning(slicer.util.mainWindow(),
@@ -287,7 +293,7 @@ class CompareVolumesWidget:
 # CompareVolumesLogic
 #
 
-class CompareVolumesLogic:
+class CompareVolumesLogic(object):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -328,7 +334,7 @@ class CompareVolumesLogic:
     import math
 
     if not volumeNodes:
-      volumeNodes = slicer.util.getNodes('*VolumeNode*').values()
+      volumeNodes = list(slicer.util.getNodes('*VolumeNode*').values())
 
     if len(volumeNodes) == 0:
       return
@@ -346,7 +352,7 @@ class CompareVolumesLogic:
         columns += 1
       if columns > len(volumeNodes):
         columns = len(volumeNodes)
-      r = len(volumeNodes)/columns
+      r = old_div(len(volumeNodes),columns)
       rows = math.floor(r)
       if r != rows:
         rows += 1
@@ -417,7 +423,7 @@ class CompareVolumesLogic:
 
   def rotateToVolumePlanes(self, referenceVolume):
     sliceNodes = slicer.util.getNodes('vtkMRMLSliceNode*')
-    for name, node in sliceNodes.items():
+    for name, node in list(sliceNodes.items()):
       node.RotateToVolumePlane(referenceVolume)
     # snap to IJK to try and avoid rounding errors
     sliceLogics = slicer.app.layoutManager().mrmlSliceLogics()
@@ -434,7 +440,7 @@ class CompareVolumesLogic:
     if not sliceNodes:
       sliceNodes = slicer.util.getNodes('vtkMRMLSliceNode*')
     layoutManager = slicer.app.layoutManager()
-    for sliceNode in sliceNodes.values():
+    for sliceNode in list(sliceNodes.values()):
       if factor == "Fit":
         sliceWidget = layoutManager.sliceWidget(sliceNode.GetLayoutName())
         if sliceWidget:
@@ -458,7 +464,7 @@ class CompareVolumesLogic:
     import math
 
     if not volumeNodes:
-      volumeNodes = slicer.util.getNodes('*VolumeNode*').values()
+      volumeNodes = list(slicer.util.getNodes('*VolumeNode*').values())
 
     if len(volumeNodes) == 0:
       return
@@ -596,7 +602,7 @@ class ViewWatcher(object):
     # get new slice nodes
     layoutManager = slicer.app.layoutManager()
     sliceNodeCount = slicer.mrmlScene.GetNumberOfNodesByClass('vtkMRMLSliceNode')
-    for nodeIndex in xrange(sliceNodeCount):
+    for nodeIndex in range(sliceNodeCount):
       # find the widget for each node in scene
       sliceNode = slicer.mrmlScene.GetNthNodeByClass(nodeIndex, 'vtkMRMLSliceNode')
       sliceWidget = layoutManager.sliceWidget(sliceNode.GetLayoutName())
@@ -635,7 +641,7 @@ class ViewWatcher(object):
       sliceWidget = layoutManager.sliceWidget(observee.GetLayoutName())
       if sliceWidget and observee.GetLayoutName() == self.currentLayoutName:
         observee = sliceWidget.sliceView().interactor()
-    if self.sliceWidgetsPerStyle.has_key(observee):
+    if observee in self.sliceWidgetsPerStyle:
       self.sliceWidget = self.sliceWidgetsPerStyle[observee]
       self.sliceView = self.sliceWidget.sliceView()
       self.sliceLogic = self.sliceWidget.sliceLogic()
@@ -777,7 +783,7 @@ class LayerReveal(ViewWatcher):
       else:
         self.imageMapper.SetInputData(self.vtkImage)
       x,y = self.xy
-      self.actor2D.SetPosition(x-self.width/2,y-self.height/2)
+      self.actor2D.SetPosition(x-old_div(self.width,2),y-old_div(self.height,2))
       self.sliceView.forceRender()
 
   def revealPixmap(self, xy):
@@ -807,8 +813,8 @@ class LayerReveal(ViewWatcher):
     overlayImage = qt.QImage(imageWidth, imageHeight, qt.QImage().Format_ARGB32)
     overlayImage.fill(0)
 
-    halfWidth = imageWidth/2
-    halfHeight = imageHeight/2
+    halfWidth = old_div(imageWidth,2)
+    halfHeight = old_div(imageHeight,2)
     topLeft = qt.QRect(0,0, x, yy)
     bottomRight = qt.QRect(x, yy, imageWidth-x-1, imageHeight-yy-1)
 
@@ -822,12 +828,12 @@ class LayerReveal(ViewWatcher):
     compositePixmap.fill(self.gray)
     self.painter.begin(compositePixmap)
     self.painter.drawImage(
-        -1 * (x  -self.width/2),
-        -1 * (yy -self.height/2),
+        -1 * (x  -old_div(self.width,2)),
+        -1 * (yy -old_div(self.height,2)),
         bgQImage)
     self.painter.drawImage(
-        -1 * (x  -self.width/2),
-        -1 * (yy -self.height/2),
+        -1 * (x  -old_div(self.width,2)),
+        -1 * (yy -old_div(self.height,2)),
         overlayImage)
     self.painter.end()
 
@@ -851,10 +857,10 @@ class LayerReveal(ViewWatcher):
 
   def scalePixmap(self,pixmap):
     # extract the center of the pixmap and then zoom
-    halfWidth = self.width/2
-    halfHeight = self.height/2
-    quarterWidth = self.width/4
-    quarterHeight = self.height/4
+    halfWidth = old_div(self.width,2)
+    halfHeight = old_div(self.height,2)
+    quarterWidth = old_div(self.width,4)
+    quarterHeight = old_div(self.height,4)
     centerPixmap = qt.QPixmap(halfWidth,halfHeight)
     centerPixmap.fill(self.gray)
     self.painter.begin(centerPixmap)
@@ -1018,7 +1024,7 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
         reveal.processEvent(style, "EnterEvent")
         steps = 300
         for step in range(0,steps):
-          t = step/float(steps)
+          t = old_div(step,float(steps))
           px = int(t * sliceWidget.width)
           py = int(t * sliceWidget.height)
           style.SetEventPosition(px,py)
