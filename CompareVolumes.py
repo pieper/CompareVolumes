@@ -1,15 +1,16 @@
 from __future__ import division
 from __future__ import print_function
 import os, string
-import unittest
-from __main__ import vtk, qt, ctk, slicer
+import vtk, qt, ctk, slicer
+from slicer.ScriptedLoadableModule import *
 
 #
 # CompareVolumes
 #
 
-class CompareVolumes(object):
+class CompareVolumes(ScriptedLoadableModule):
   def __init__(self, parent):
+    ScriptedLoadableModule.__init__(self, parent)
     parent.title = "Compare Volumes"
     parent.categories = ["Wizards"]
     parent.dependencies = []
@@ -36,75 +37,29 @@ Please refer to <a href=\"$a/Documentation/$b.$c/Modules/CompareVolumes\"> the d
     "Quantification of 3D Bony Changes in Temporomandibular Joint Osteoarthritis"
     (TMJ-OA).
 """ # replace with organization, grant and thanks.
-    self.parent = parent
-
-    # Add this test to the SelfTest module's list for discovery when the module
-    # is created.  Since this module may be discovered before SelfTests itself,
-    # create the list if it doesn't already exist.
-    try:
-      slicer.selfTests
-    except AttributeError:
-      slicer.selfTests = {}
-    slicer.selfTests['CompareVolumes'] = self.runTest
-
-  def runTest(self):
-    tester = CompareVolumesTest()
-    tester.runTest()
 
 #
 # qCompareVolumesWidget
 #
 
-class CompareVolumesWidget(object):
-  def __init__(self, parent = None):
-    self.developerMode = slicer.util.settingsValue('Developer/DeveloperMode', False, converter=slicer.util.toBool)
-    if not parent:
-      self.parent = slicer.qMRMLWidget()
-      self.parent.setLayout(qt.QVBoxLayout())
-      self.parent.setMRMLScene(slicer.mrmlScene)
-    else:
-      self.parent = parent
-    self.layout = self.parent.layout()
-    if not parent:
-      self.setup()
-      self.parent.show()
+class CompareVolumesWidget(ScriptedLoadableModuleWidget):
+
+  def __init__(self, parent=None):
+    ScriptedLoadableModuleWidget.__init__(self, parent)
     self.layerReveal = None
 
   def setup(self):
+    ScriptedLoadableModuleWidget.setup(self)
+
     # Instantiate and connect widgets ...
 
     if self.developerMode:
-      #
-      # Reload and Test area
-      #
-      reloadCollapsibleButton = ctk.ctkCollapsibleButton()
-      reloadCollapsibleButton.text = "Reload && Test"
-      self.layout.addWidget(reloadCollapsibleButton)
-      reloadFormLayout = qt.QFormLayout(reloadCollapsibleButton)
-
-      # reload button
-      # (use this during development, but remove it when delivering
-      #  your module to users)
-      self.reloadButton = qt.QPushButton("Reload")
-      self.reloadButton.toolTip = "Reload this module."
-      self.reloadButton.name = "CompareVolumes Reload"
-      reloadFormLayout.addWidget(self.reloadButton)
-      self.reloadButton.connect('clicked()', self.onReload)
-
-      # reload and test button
-      # (use this during development, but remove it when delivering
-      #  your module to users)
-      self.reloadAndTestButton = qt.QPushButton("Reload and Test All")
-      self.reloadAndTestButton.toolTip = "Reload this module and then run the self tests."
-      reloadFormLayout.addWidget(self.reloadAndTestButton)
-      self.reloadAndTestButton.connect('clicked()', self.onReloadAndTest)
-
       # reload and run specific tests
       scenarios = ("Three Volume", "View Watcher", "LayerReveal",)
       for scenario in scenarios:
         button = qt.QPushButton("Reload and Test %s" % scenario)
         self.reloadAndTestButton.toolTip = "Reload this module and then run the %s self test." % scenario
-        reloadFormLayout.addWidget(button)
+        self.reloadCollapsibleButton.layout().addWidget(button)
         button.connect('clicked()', lambda s=scenario: self.onReloadAndTest(scenario=s))
 
     #
@@ -233,63 +188,11 @@ class CompareVolumesWidget(object):
         label=self.labelSelector.currentNode(),
         )
 
-  def onReload(self,moduleName="CompareVolumes"):
-    """Generic reload method for any scripted module.
-    ModuleWizard will subsitute correct default moduleName.
-    """
-    import imp, sys, os, slicer
-
-    widgetName = moduleName + "Widget"
-
-    # reload the source code
-    # - set source file path
-    # - load the module to the global space
-    filePath = eval('slicer.modules.%s.path' % moduleName.lower())
-    p = os.path.dirname(filePath)
-    if not sys.path.__contains__(p):
-      sys.path.insert(0,p)
-    fp = open(filePath, "r")
-    globals()[moduleName] = imp.load_module(
-        moduleName, fp, filePath, ('.py', 'r', imp.PY_SOURCE))
-    fp.close()
-
-    # rebuild the widget
-    # - find and hide the existing widget
-    # - create a new widget in the existing parent
-    parent = slicer.util.findChildren(name='%s Reload' % moduleName)[0].parent().parent()
-    for child in parent.children():
-      try:
-        child.hide()
-      except AttributeError:
-        pass
-    # Remove spacer items
-    item = parent.layout().itemAt(0)
-    while item:
-      parent.layout().removeItem(item)
-      item = parent.layout().itemAt(0)
-    # create new widget inside existing parent
-    globals()[widgetName.lower()] = eval(
-        'globals()["%s"].%s(parent)' % (moduleName, widgetName))
-    globals()[widgetName.lower()].setup()
-
-  def onReloadAndTest(self,moduleName="CompareVolumes",scenario=None):
-    try:
-      self.onReload()
-      evalString = 'globals()["%s"].%sTest()' % (moduleName, moduleName)
-      tester = eval(evalString)
-      tester.runTest(scenario=scenario)
-    except Exception as e:
-      import traceback
-      traceback.print_exc()
-      qt.QMessageBox.warning(slicer.util.mainWindow(),
-          "Reload and Test", 'Exception!\n\n' + str(e) + "\n\nSee Python Console for Stack Trace")
-
-
 #
 # CompareVolumesLogic
 #
 
-class CompareVolumesLogic(object):
+class CompareVolumesLogic(ScriptedLoadableModuleLogic):
   """This class should implement all the actual
   computation done by your module.  The interface
   should be such that other python code can import
@@ -297,6 +200,7 @@ class CompareVolumesLogic(object):
   requiring an instance of the Widget
   """
   def __init__(self):
+    ScriptedLoadableModuleLogic.__init__(self)
     self.sliceViewItemPattern = """
       <item><view class="vtkMRMLSliceNode" singletontag="{viewName}">
         <property name="orientation" action="default">{orientation}</property>
@@ -869,27 +773,10 @@ class LayerReveal(ViewWatcher):
     return scaledPixmap
 
 
-class CompareVolumesTest(unittest.TestCase):
+class CompareVolumesTest(ScriptedLoadableModuleTest):
   """
   This is the test case for your scripted module.
   """
-
-  def delayDisplay(self,message,msec=1000):
-    """This utility method displays a small dialog and waits.
-    This does two things: 1) it lets the event loop catch up
-    to the state of the test so that rendering and widget updates
-    have all taken place before the test continues and 2) it
-    shows the user/developer/tester the state of the test
-    so that we'll know when it breaks.
-    """
-    print(message)
-    self.info = qt.QDialog()
-    self.infoLayout = qt.QVBoxLayout()
-    self.info.setLayout(self.infoLayout)
-    self.label = qt.QLabel(message,self.info)
-    self.infoLayout.addWidget(self.label)
-    qt.QTimer.singleShot(msec, self.info.close)
-    self.info.exec_()
 
   def setUp(self):
     """ Do whatever is needed to reset the state - typically a scene clear will be enough.
@@ -920,10 +807,9 @@ class CompareVolumesTest(unittest.TestCase):
     self.delayDisplay("Starting the test")
 
     # first with two volumes
-    import SampleData
-    sampleDataLogic = SampleData.SampleDataLogic()
-    head = sampleDataLogic.downloadMRHead()
-    brain = sampleDataLogic.downloadDTIBrain()
+    from SampleData import SampleDataLogic
+    head = SampleDataLogic().downloadMRHead()
+    brain = SampleDataLogic().downloadDTIBrain()
     logic = CompareVolumesLogic()
     logic.viewerPerVolume()
     self.delayDisplay('Should be one row with two columns')
@@ -931,7 +817,7 @@ class CompareVolumesTest(unittest.TestCase):
     self.delayDisplay('Should be two columns, with names')
 
     # now with three volumes
-    otherBrain = sampleDataLogic.downloadMRBrainTumor1()
+    otherBrain = SampleDataLogic().downloadMRBrainTumor1()
     logic.viewerPerVolume()
     logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain), viewNames=('brain', 'head','otherBrain'))
     self.delayDisplay('Should be one row with three columns')
@@ -942,7 +828,7 @@ class CompareVolumesTest(unittest.TestCase):
     logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain), viewNames=('brain', 'head','otherBrain'), orientation='Coronal')
     self.delayDisplay('same thing in coronal')
 
-    anotherHead = sampleDataLogic.downloadMRHead()
+    anotherHead = SampleDataLogic().downloadMRHead()
     logic.viewerPerVolume(volumeNodes=(brain,head,otherBrain,anotherHead), viewNames=('brain', 'head','otherBrain','anotherHead'), orientation='Coronal')
     self.delayDisplay('now four volumes, with three columns and two rows')
 
@@ -968,10 +854,9 @@ class CompareVolumesTest(unittest.TestCase):
     watcher = ViewWatcher()
 
     # first with two volumes
-    import SampleData
-    sampleDataLogic = SampleData.SampleDataLogic()
-    head = sampleDataLogic.downloadMRHead()
-    brain = sampleDataLogic.downloadDTIBrain()
+    from SampleData import SampleDataLogic
+    head = SampleDataLogic().downloadMRHead()
+    brain = SampleDataLogic().downloadDTIBrain()
     logic = CompareVolumesLogic()
     logic.viewerPerVolume()
     self.delayDisplay('Should be one row with two columns')
@@ -994,11 +879,10 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
 
 
     # first with two volumes
-    import SampleData
-    sampleDataLogic = SampleData.SampleDataLogic()
-    head = sampleDataLogic.downloadMRHead()
-    dti = sampleDataLogic.downloadDTIBrain()
-    tumor = sampleDataLogic.downloadMRBrainTumor1()
+    from SampleData import SampleDataLogic
+    head = SampleDataLogic().downloadMRHead()
+    dti = SampleDataLogic().downloadDTIBrain()
+    tumor = SampleDataLogic().downloadMRBrainTumor1()
     logic = CompareVolumesLogic()
     logic.viewerPerVolume()
     self.delayDisplay('Should be one row with two columns')
