@@ -1,9 +1,5 @@
 from __future__ import division
 from __future__ import print_function
-from builtins import str
-from builtins import range
-from past.utils import old_div
-from builtins import object
 import os, string
 import unittest
 from __main__ import vtk, qt, ctk, slicer
@@ -352,7 +348,7 @@ class CompareVolumesLogic(object):
         columns += 1
       if columns > len(volumeNodes):
         columns = len(volumeNodes)
-      r = old_div(len(volumeNodes),columns)
+      r = len(volumeNodes) // columns
       rows = math.floor(r)
       if r != rows:
         rows += 1
@@ -783,7 +779,7 @@ class LayerReveal(ViewWatcher):
       else:
         self.imageMapper.SetInputData(self.vtkImage)
       x,y = self.xy
-      self.actor2D.SetPosition(x-old_div(self.width,2),y-old_div(self.height,2))
+      self.actor2D.SetPosition(x- self.width//2,y-self.height//2)
       self.sliceView.forceRender()
 
   def revealPixmap(self, xy):
@@ -813,8 +809,8 @@ class LayerReveal(ViewWatcher):
     overlayImage = qt.QImage(imageWidth, imageHeight, qt.QImage().Format_ARGB32)
     overlayImage.fill(0)
 
-    halfWidth = old_div(imageWidth,2)
-    halfHeight = old_div(imageHeight,2)
+    halfWidth = imageWidth//2
+    halfHeight = imageHeight//2
     topLeft = qt.QRect(0,0, x, yy)
     bottomRight = qt.QRect(x, yy, imageWidth-x-1, imageHeight-yy-1)
 
@@ -828,12 +824,12 @@ class LayerReveal(ViewWatcher):
     compositePixmap.fill(self.gray)
     self.painter.begin(compositePixmap)
     self.painter.drawImage(
-        -1 * (x  -old_div(self.width,2)),
-        -1 * (yy -old_div(self.height,2)),
+        -1 * (x  -self.width//2),
+        -1 * (yy -self.height//2),
         bgQImage)
     self.painter.drawImage(
-        -1 * (x  -old_div(self.width,2)),
-        -1 * (yy -old_div(self.height,2)),
+        -1 * (x  -self.width//2),
+        -1 * (yy -self.height//2),
         overlayImage)
     self.painter.end()
 
@@ -857,10 +853,10 @@ class LayerReveal(ViewWatcher):
 
   def scalePixmap(self,pixmap):
     # extract the center of the pixmap and then zoom
-    halfWidth = old_div(self.width,2)
-    halfHeight = old_div(self.height,2)
-    quarterWidth = old_div(self.width,4)
-    quarterHeight = old_div(self.height,4)
+    halfWidth = self.width//2
+    halfHeight = self.height//2
+    quarterWidth = self.width//4
+    quarterHeight = self.height//4
     centerPixmap = qt.QPixmap(halfWidth,halfHeight)
     centerPixmap.fill(self.gray)
     self.painter.begin(centerPixmap)
@@ -1024,7 +1020,7 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
         reveal.processEvent(style, "EnterEvent")
         steps = 300
         for step in range(0,steps):
-          t = old_div(step,float(steps))
+          t = step//float(steps)
           px = int(t * sliceWidget.width)
           py = int(t * sliceWidget.height)
           style.SetEventPosition(px,py)
