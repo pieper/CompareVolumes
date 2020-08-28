@@ -252,7 +252,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         columns += 1
       if columns > len(volumeNodes):
         columns = len(volumeNodes)
-      r = len(volumeNodes) // columns
+      r = len(volumeNodes) / columns
       rows = math.floor(r)
       if r != rows:
         rows += 1
