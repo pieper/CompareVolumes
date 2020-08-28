@@ -396,7 +396,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         index += 1
         column += 1
       if include3D:
-        print('TODO: add 3D viewer')
+        # print('TODO: add 3D viewer')
       layoutDescription += '</layout></item>\n'
     row += 1
     layoutDescription += '</layout>'
@@ -800,6 +800,7 @@ class CompareVolumesTest(ScriptedLoadableModuleTest):
     else:
       self.test_CompareVolumes1()
       self.test_CompareVolumes2()
+      self.test_CompareVolumes3()
 
   def test_CompareVolumes1(self):
     """ Test modes with 3 volumes.
@@ -915,6 +916,8 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
           reveal.processEvent(style, "MouseMoveEvent")
         reveal.processEvent(style, "LeaveEvent")
         reveal.tearDown()
+        self.delayDisplay(f'Scale {scale}, size {size}')
+
 
     self.delayDisplay('Should have just seen reveal cursor move through head view')
 
