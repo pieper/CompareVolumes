@@ -687,7 +687,7 @@ class LayerReveal(ViewWatcher):
       else:
         self.imageMapper.SetInputData(self.vtkImage)
       x,y = self.xy
-      self.actor2D.SetPosition(x- self.width//2,y-self.height//2)
+      self.actor2D.SetPosition(x- self.width/2,y-self.height/2)
       self.sliceView.forceRender()
 
   def revealPixmap(self, xy):
