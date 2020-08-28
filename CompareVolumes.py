@@ -160,6 +160,10 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     layerRevealFormLayout.addRow("Layer Reveal Cursor", self.layerRevealCheck)
     self.layerRevealCheck.connect("toggled(bool)", self.onLayerRevealToggled)
 
+    self.layerRevealScaleCheck = qt.QCheckBox()
+    layerRevealFormLayout.addRow("Layer Reveal Cursor Scaled", self.layerRevealScaleCheck)
+    self.layerRevealScaleCheck.connect("toggled(bool)", self.onLayerRevealToggled)
+
     # Add vertical spacer
     self.layout.addStretch(1)
 
@@ -169,11 +173,11 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
       self.orientationButtons[orientation].checked = True
 
   def onLayerRevealToggled(self):
-    if self.layerRevealCheck.checked:
-      self.layerReveal = LayerReveal()
-    else:
+    if self.layerReveal is not None:
       self.layerReveal.tearDown()
       self.layerReveal = None
+    if self.layerRevealCheck.checked:
+      self.layerReveal = LayerReveal(scale=self.layerRevealScaleCheck.checked)
 
   def onLightboxVolume(self):
     volumeNode = self.inputSelector.currentNode()
