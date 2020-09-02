@@ -73,12 +73,18 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout = qt.QFormLayout(parametersCollapsibleButton)
 
     #
+    # Volume order select
+    #
+    self.volumeOrderSelect = VolumeOrderSelect()
+    parametersFormLayout.addRow("Volumes", self.volumeOrderSelect.listWidget)
+
+    #
     # orientation
     #
-    self.orientationBox = qt.QGroupBox("Orientation")
+    self.orientationBox = qt.QGroupBox()
     self.orientationBox.setLayout(qt.QFormLayout())
     self.orientationButtons = {}
-    self.orientations = ("Axial", "Sagittal", "Coronal")
+    self.orientations = ("Axial", "Sagittal", "Coronal", "AxiSagCor")
     for orientation in self.orientations:
       self.orientationButtons[orientation] = qt.QRadioButton()
       self.orientationButtons[orientation].text = orientation
@@ -86,31 +92,8 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
                                 lambda o=orientation: self.setOrientation(o))
       self.orientationBox.layout().addWidget(
                                 self.orientationButtons[orientation])
-    parametersFormLayout.addWidget(self.orientationBox)
+    parametersFormLayout.addRow("Orientation", self.orientationBox)
     self.setOrientation(self.orientations[0])
-
-    #
-    # target volume selector
-    #
-    self.inputSelector = slicer.qMRMLNodeComboBox()
-    self.inputSelector.nodeTypes = ( ("vtkMRMLVolumeNode"), "" )
-    self.inputSelector.selectNodeUponCreation = True
-    self.inputSelector.addEnabled = False
-    self.inputSelector.removeEnabled = False
-    self.inputSelector.noneEnabled = False
-    self.inputSelector.showHidden = False
-    self.inputSelector.showChildNodeTypes = True
-    self.inputSelector.setMRMLScene( slicer.mrmlScene )
-    self.inputSelector.setToolTip( "Pick the input to the algorithm." )
-    parametersFormLayout.addRow("Target Volume: ", self.inputSelector)
-
-    #
-    # lightbox
-    #
-    self.lightboxVolumeButton = qt.QPushButton("Lightbox Target Volume")
-    self.lightboxVolumeButton.setToolTip( "Make a set of slice views that span the extent of this study at equally spaced locations in the selected orientation." )
-    parametersFormLayout.addRow(self.lightboxVolumeButton)
-    self.lightboxVolumeButton.connect("clicked()", self.onLightboxVolume)
 
     #
     # background volume selector
@@ -125,7 +108,7 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     self.backgroundSelector.showChildNodeTypes = True
     self.backgroundSelector.setMRMLScene( slicer.mrmlScene )
     self.backgroundSelector.setToolTip( "Common background - all lightbox panes will have this background and a different volume in each foreground." )
-    parametersFormLayout.addRow("Common Background Volume: ", self.backgroundSelector)
+    parametersFormLayout.addRow("Common Background: ", self.backgroundSelector)
 
     #
     # label volume selector
@@ -140,13 +123,38 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     self.labelSelector.showChildNodeTypes = True
     self.labelSelector.setMRMLScene( slicer.mrmlScene )
     self.labelSelector.setToolTip( "Common label - all lightbox panes will have this label on top." )
-    parametersFormLayout.addRow("Common Label Volume: ", self.labelSelector)
+    parametersFormLayout.addRow("Common Label: ", self.labelSelector)
 
+    #
+    # Hot link and cursor
+    #
+    self.hotLinkWithCursorCheck = qt.QCheckBox()
+    self.hotLinkWithCursorCheck.checked = True
+    parametersFormLayout.addRow("Hot Link with Cursor", self.hotLinkWithCursorCheck)
 
-    self.lightboxVolumesButton = qt.QPushButton("Lightbox All Volumes")
-    self.lightboxVolumesButton.setToolTip( "Make a set of slice views that show each of the currently loaded volumes, with optional companion volumes, in the selected orientation." )
-    parametersFormLayout.addRow(self.lightboxVolumesButton)
-    self.lightboxVolumesButton.connect("clicked()", self.onLightboxVolumes)
+    #
+    # re-use some UI from LandmarkRegistration
+    # - TODO: this makes odd circular dependency
+    #   that may need to be refactored someday,
+    #   but for now it works because this widget
+    #   is a common depdency.
+    #
+    import LandmarkRegistration
+    self.visualization = LandmarkRegistration.RegistrationLib.VisualizationWidget(None)
+    self.visualization.groupBoxLayout.itemAt(3).widget().hide()
+    self.visualization.groupBoxLayout.itemAt(2).widget().hide()
+    self.visualization.groupBoxLayout.itemAt(1).widget().hide()
+    self.visualization.groupBoxLayout.itemAt(0).widget().hide()
+    parametersFormLayout.addRow(self.visualization.widget)
+    self.visualization.connect("layoutRequested(mode,volumesToShow)", self.onCompareVolumes)
+
+    #
+    # Compare Button
+    #
+    self.compareVolumesButton = qt.QPushButton("Compare Checked Volumes")
+    self.compareVolumesButton.setToolTip( "Make a set of slice views that show each of the currently checked volumes, with optional companion volumes, in the selected orientation." )
+    parametersFormLayout.addRow(self.compareVolumesButton)
+    self.compareVolumesButton.connect("clicked()", self.onCompareVolumes)
 
     #
     # Add layer reveal area
@@ -161,11 +169,16 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     self.layerRevealCheck.connect("toggled(bool)", self.onLayerRevealToggled)
 
     self.layerRevealScaleCheck = qt.QCheckBox()
-    layerRevealFormLayout.addRow("Layer Reveal Cursor Scaled", self.layerRevealScaleCheck)
+    layerRevealFormLayout.addRow("Layer Reveal Cursor Scaled 2x", self.layerRevealScaleCheck)
     self.layerRevealScaleCheck.connect("toggled(bool)", self.onLayerRevealToggled)
 
     # Add vertical spacer
     self.layout.addStretch(1)
+
+  def cleanup(self):
+    self.volumeOrderSelect.cleanup()
+    if self.layerReveal:
+      self.layerReveal.cleanup()
 
   def setOrientation(self,orientation):
     if orientation in self.orientations:
@@ -174,23 +187,101 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
 
   def onLayerRevealToggled(self):
     if self.layerReveal is not None:
-      self.layerReveal.tearDown()
+      self.layerReveal.cleanup()
       self.layerReveal = None
     if self.layerRevealCheck.checked:
       self.layerReveal = LayerReveal(scale=self.layerRevealScaleCheck.checked)
 
-  def onLightboxVolume(self):
-    volumeNode = self.inputSelector.currentNode()
+  def onCompareVolumes(self):
     logic = CompareVolumesLogic()
-    logic.volumeLightbox(volumeNode,orientation=self.selectedOrientation)
+    volumeIDs = self.volumeOrderSelect.volumeIDs()
+    volumeNodes = [slicer.mrmlScene.GetNodeByID(id) for id in volumeIDs]
+    if self.selectedOrientation == 'AxiSagCor':
+        viewers = logic.viewersPerVolume(
+            volumeNodes=volumeNodes,
+            background=self.backgroundSelector.currentNode(),
+            label=self.labelSelector.currentNode(),
+            opacity=self.visualization.fadeSlider.value,
+            )
+    else:
+        viewers = logic.viewerPerVolume(
+            volumeNodes=volumeNodes,
+            orientation=self.selectedOrientation,
+            background=self.backgroundSelector.currentNode(),
+            label=self.labelSelector.currentNode(),
+            opacity=self.visualization.fadeSlider.value,
+            )
+    if self.hotLinkWithCursorCheck.checked:
+        for viewName in viewers.keys():
+            sliceWidget = slicer.app.layoutManager().sliceWidget(viewName)
+            compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+            compositeNode.SetLinkedControl(True)
+            compositeNode.SetHotLinkedControl(True)
+        crosshairNode = slicer.mrmlScene.GetSingletonNode("default", "vtkMRMLCrosshairNode")
+        crosshairNode.SetCrosshairMode(crosshairNode.ShowSmallBasic)
 
-  def onLightboxVolumes(self):
-    logic = CompareVolumesLogic()
-    logic.viewerPerVolume(
-        orientation=self.selectedOrientation,
-        background=self.backgroundSelector.currentNode(),
-        label=self.labelSelector.currentNode(),
-        )
+
+class VolumeOrderSelect:
+    """Helper class to manage a list widget with a checkable
+    and re-orderable item for each volume in the scene"""
+    def __init__(self):
+      self.listWidget = qt.QListWidget()
+      self.listWidget.setDragDropMode(qt.QAbstractItemView.InternalMove)
+      events = [slicer.mrmlScene.NodeAddedEvent,
+                slicer.mrmlScene.NodeRemovedEvent,
+                slicer.mrmlScene.NewSceneEvent]
+      self.observations = []
+      for event in events:
+        self.observations.append(slicer.mrmlScene.AddObserver(event, self.refresh))
+      self.refresh()
+
+    def cleanup(self):
+      for observation in self.observations:
+        slicer.mrmlScene.RemoveObserver(observation)
+
+    def refresh(self, caller=None, event=None):
+      """synchronize list items with current volume
+      nodes in scene while retaining order and check state"""
+      listModel = self.listWidget.model()
+      # first, save the order and checkstate
+      previousVolumeIDs = []
+      previousCheckStates = []
+      for row in range(listModel.rowCount()):
+        item = self.listWidget.item(row)
+        previousCheckStates.append(item.checkState())
+        previousVolumeIDs.append(item.toolTip())
+      # reset, and first add any of the previous volumes still in scene
+      self.listWidget.clear()
+      sceneVolumeNodes = list(slicer.util.getNodes('*VolumeNode*').values())
+      sceneVolumeIDs = [node.GetID() for node in sceneVolumeNodes]
+      volumeIDs = []
+      volumeCheckStates = []
+      for volumeIndex in range(len(previousVolumeIDs)):
+        if previousVolumeIDs[volumeIndex] in sceneVolumeIDs:
+          volumeIDs.append(previousVolumeIDs[volumeIndex])
+          volumeCheckStates.append(previousCheckStates[volumeIndex])
+      # add any new volumes that were here before
+      for volumeID in sceneVolumeIDs:
+        if volumeID not in volumeIDs:
+          volumeIDs.append(volumeID)
+          volumeCheckStates.append(qt.Qt.Checked)
+      # add items
+      for (volumeID,volumeCheckState) in zip(volumeIDs, volumeCheckStates):
+        volumeNode = slicer.mrmlScene.GetNodeByID(volumeID)
+        self.listWidget.addItem(volumeNode.GetName())
+        item = self.listWidget.item(listModel.rowCount()-1)
+        item.setToolTip(volumeID)
+        item.setCheckState(volumeCheckState)
+
+    def volumeIDs(self):
+      volumeIDs = []
+      listModel = self.listWidget.model()
+      for row in range(listModel.rowCount()):
+        item = self.listWidget.item(row)
+        if item.checkState() == qt.Qt.Checked:
+          volumeIDs.append(item.toolTip())
+      return volumeIDs
+
 
 #
 # CompareVolumesLogic
@@ -289,11 +380,6 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     # let the widgets all decide how big they should be
     slicer.app.processEvents()
 
-    # if background is specified, move it to the front of the list:
-    #  it will show up in first slice view with itself as in foreground
-    if background:
-      volumeNodes = [background] + [ i for i in volumeNodes if i != background]
-
     # put one of the volumes into each view, or none if it should be blank
     sliceNodesByViewName = {}
     layoutManager = slicer.app.layoutManager()
@@ -321,7 +407,6 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
 
       sliceNode = sliceWidget.mrmlSliceNode()
       sliceNode.SetOrientation(orientation)
-      sliceWidget.fitSliceToBackground()
       sliceNodesByViewName[viewName] = sliceNode
     return sliceNodesByViewName
 
@@ -356,7 +441,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         sliceNode.SetFieldOfView( newFOVx, newFOVy, newFOVz )
         sliceNode.UpdateMatrices()
 
-  def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False):
+  def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False,opacity=0.5):
     """ Make an axi/sag/cor(/3D) row of viewers
     for each volume in the scene.
     If background is specified, put it in the background
@@ -397,6 +482,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         column += 1
       if include3D:
         # print('TODO: add 3D viewer')
+        pass
       layoutDescription += '</layout></item>\n'
     row += 1
     layoutDescription += '</layout>'
@@ -413,38 +499,20 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         viewName = volumeNode.GetName() + '-' + orientation
         sliceWidget = layoutManager.sliceWidget(viewName)
         compositeNode = sliceWidget.mrmlSliceCompositeNode()
-        compositeNode.SetBackgroundVolumeID(volumeNode.GetID())
+        if background:
+          compositeNode.SetBackgroundVolumeID(background.GetID())
+          compositeNode.SetForegroundVolumeID(volumeNode.GetID())
+          compositeNode.SetForegroundOpacity(opacity)
+        else:
+          compositeNode.SetBackgroundVolumeID(volumeNode.GetID())
+          compositeNode.SetForegroundVolumeID("")
+        if label:
+          compositeNode.SetLabelVolumeID(label.GetID())
+        else:
+          compositeNode.SetLabelVolumeID("")
         sliceNode = sliceWidget.mrmlSliceNode()
         sliceNode.SetOrientation(orientation)
-        sliceWidget.fitSliceToBackground()
         sliceNodesByViewName[viewName] = sliceNode
-    return sliceNodesByViewName
-
-  def volumeLightbox(self,volumeNode,layout=[3,3],orientation='Axial',padRatio=.1):
-    """Display the given volumeNode in a single slice view
-    in lightbox with layout defining the number of rows and
-    colums in the given orientation.  The spacing of the lightbox
-    cells should span the volume range in RAS"""
-    # make a single viewer, just for this volume
-    views = layout[0] * layout[1]
-    sliceNodesByViewName = self.viewerPerVolume([volumeNode,]*views, layout=layout, orientation=orientation)
-    view = 0.
-    for viewName in sorted(sliceNodesByViewName.keys()):
-      sliceNode = sliceNodesByViewName[viewName]
-      sliceNode.RotateToVolumePlane(volumeNode)
-      layoutManager = slicer.app.layoutManager()
-      sliceWidget = layoutManager.sliceWidget(sliceNode.GetLayoutName())
-      sliceLogic = sliceWidget.sliceLogic()
-      bounds = [0,]*6
-      sliceLogic.GetLowestVolumeSliceBounds(bounds)
-      sliceRange = (bounds[5] - bounds[4])
-      slicePad = padRatio * sliceRange
-      paddedRange = sliceRange - 2*slicePad
-      lowBound = bounds[4] + slicePad
-      highBound = bounds[5] - slicePad
-      offset = lowBound + paddedRange * view / (views-1.)
-      sliceNode.SetSliceOffset(offset)
-      view += 1.
     return sliceNodesByViewName
 
 class ViewWatcher(object):
@@ -488,8 +556,14 @@ class ViewWatcher(object):
     self.layerVolumeNodes = {}
     self.savedWidget = None
 
-  def __del__(self):
-    self.tearDown()
+  def cleanup(self):
+    """Virtual method meant to be overridden by the subclass
+    Cleans up any observers (or widgets and other instances).
+    This is needed because __del__ does not reliably get called.
+    """
+    layoutManager = slicer.app.layoutManager()
+    layoutManager.disconnect('layoutChanged(int)', self.refreshObservers)
+    self.removeObservers()
 
   def removeObservers(self):
     # remove observers and reset
@@ -573,15 +647,6 @@ class ViewWatcher(object):
     """
     pass
 
-  def tearDown(self):
-    """Virtual method meant to be overridden by the subclass
-    Cleans up any observers (or widgets and other instances).
-    This is needed because __del__ does not reliably get called.
-    """
-    layoutManager = slicer.app.layoutManager()
-    layoutManager.disconnect('layoutChanged(int)', self.refreshObservers)
-    self.removeObservers()
-
   def cursorOff(self,widget):
     """Turn off and save the current cursor so
     the user can see an overlay that tracks the mouse"""
@@ -605,6 +670,7 @@ class ViewWatcher(object):
     self.savedWidget = None
     self.savedCursor = None
 
+
 class LayerReveal(ViewWatcher):
   """Track the mouse and show a reveal view"""
 
@@ -624,7 +690,6 @@ class LayerReveal(ViewWatcher):
     # a painter to use for various jobs
     self.painter = qt.QPainter()
 
-
     # make a qwidget display
     if self.showWidget:
       self.frame = qt.QFrame(parent)
@@ -642,14 +707,11 @@ class LayerReveal(ViewWatcher):
     self.imageMapper = vtk.vtkImageMapper()
     self.imageMapper.SetColorLevel(128)
     self.imageMapper.SetColorWindow(255)
-    if vtk.VTK_MAJOR_VERSION <= 5:
-      self.imageMapper.SetInput(self.vtkImage)
-    else:
-      self.imageMapper.SetInputData(self.vtkImage)
+    self.imageMapper.SetInputData(self.vtkImage)
     self.actor2D = vtk.vtkActor2D()
     self.actor2D.SetMapper(self.imageMapper)
 
-  def tearDown(self):
+  def cleanup(self):
     # clean up widget
     self.frame = None
     # clean up image actor
@@ -658,7 +720,16 @@ class LayerReveal(ViewWatcher):
     self.cursorOn()
     if self.sliceView:
       self.sliceView.scheduleRender()
-    super(LayerReveal,self).tearDown()
+    try:
+      super(LayerReveal,self).cleanup()
+    except TypeError:
+      # Apparently during reloading of a scripted
+      # module the superclass is not in the
+      # correct space, so ignore the error
+      # because it doesn't happen in normal use
+      # when this is called during toggling
+      # of the LayerReveal cursor state
+      pass
 
   def onSliceWidgetEvent(self,event):
     """Update reveal displays"""
@@ -868,7 +939,7 @@ class CompareVolumesTest(ScriptedLoadableModuleTest):
     logic.viewerPerVolume(volumeNodes=(brain,head), viewNames=('brain', 'head'))
     self.delayDisplay('Should be two columns, with names')
 
-    watcher.tearDown()
+    watcher.cleanup()
 
     self.delayDisplay('Test passed!')
 
@@ -881,7 +952,6 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
     """
 
     self.delayDisplay("Starting LayerReveal test")
-
 
     # first with two volumes
     from SampleData import SampleDataLogic
@@ -915,7 +985,7 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
           style.SetEventPosition(px,py)
           reveal.processEvent(style, "MouseMoveEvent")
         reveal.processEvent(style, "LeaveEvent")
-        reveal.tearDown()
+        reveal.cleanup()
         self.delayDisplay(f'Scale {scale}, size {size}')
 
 
