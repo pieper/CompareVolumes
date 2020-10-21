@@ -1,3 +1,4 @@
+
 from __future__ import division
 from __future__ import print_function
 import os, string
@@ -76,7 +77,7 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     # Volume order select
     #
     self.volumeOrderSelect = VolumeOrderSelect()
-    parametersFormLayout.addRow("Volumes", self.volumeOrderSelect.listWidget)
+    parametersFormLayout.addRow("Volumes", self.volumeOrderSelect.widget)
 
     #
     # orientation
@@ -225,8 +226,22 @@ class VolumeOrderSelect:
     """Helper class to manage a list widget with a checkable
     and re-orderable item for each volume in the scene"""
     def __init__(self):
+      self.widget = qt.QWidget()
+      self.layout = qt.QVBoxLayout()
+      self.widget.setLayout(self.layout)
       self.listWidget = qt.QListWidget()
       self.listWidget.setDragDropMode(qt.QAbstractItemView.InternalMove)
+      self.layout.addWidget(self.listWidget)
+      self.controlWiget = qt.QWidget()
+      self.controlLayout = qt.QHBoxLayout()
+      self.controlWiget.setLayout(self.controlLayout)
+      self.selectAllButton = qt.QPushButton("Select all")
+      self.unselectAllButton = qt.QPushButton("Unselect all")
+      self.controlLayout.addWidget(self.selectAllButton)
+      self.controlLayout.addWidget(self.unselectAllButton)
+      self.layout.addWidget(self.controlWiget)
+      self.selectAllButton.connect("clicked()", lambda state=qt.Qt.Checked: self.setCheckStates(state))
+      self.unselectAllButton.connect("clicked()", lambda state=qt.Qt.Unchecked: self.setCheckStates(state))
       events = [slicer.mrmlScene.NodeAddedEvent,
                 slicer.mrmlScene.NodeRemovedEvent,
                 slicer.mrmlScene.NewSceneEvent]
@@ -234,6 +249,12 @@ class VolumeOrderSelect:
       for event in events:
         self.observations.append(slicer.mrmlScene.AddObserver(event, self.refresh))
       self.refresh()
+
+    def setCheckStates(self, state):
+      listModel = self.listWidget.model()
+      for row in range(listModel.rowCount()):
+        item = self.listWidget.item(row)
+        item.setCheckState(state)
 
     def cleanup(self):
       for observation in self.observations:
