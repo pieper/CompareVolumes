@@ -355,20 +355,25 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     if len(volumeNodes) == 0:
       return
 
+    volumeCount = len(volumeNodes)
+    volumeCountSqrt = math.sqrt(volumeCount)
     if layout:
       rows = layout[0]
       columns = layout[1]
+    elif volumeCountSqrt == math.floor(volumeCountSqrt):
+      rows = int(volumeCountSqrt)
+      columns = int(volumeCountSqrt)
     else:
       # make an array with wide screen aspect ratio
       # - e.g. 3 volumes in 3x1 grid
       # - 5 volumes 3x2 with only two volumes in second row
-      c = 1.5 * math.sqrt(len(volumeNodes))
+      c = 1.5 * volumeCountSqrt
       columns = math.floor(c)
-      if c != columns:
+      if (c != columns) and (volumeCount % columns != 0):
         columns += 1
-      if columns > len(volumeNodes):
-        columns = len(volumeNodes)
-      r = len(volumeNodes) / columns
+      if columns > volumeCount:
+        columns = volumeCount
+      r = volumeCount / columns
       rows = math.floor(r)
       if r != rows:
         rows += 1
