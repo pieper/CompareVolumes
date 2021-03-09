@@ -779,10 +779,7 @@ class LayerReveal(ViewWatcher):
         self.cursorOff(self.sliceWidget)
     else:
       self.mrmlUtils.qImageToVtkImageData(revealPixmap.toImage(),self.vtkImage)
-      if vtk.VTK_MAJOR_VERSION <= 5:
-        self.imageMapper.SetInput(self.vtkImage)
-      else:
-        self.imageMapper.SetInputData(self.vtkImage)
+      self.imageMapper.SetInputData(self.vtkImage)
       x,y = self.xy
       self.actor2D.SetPosition(x- self.width/2,y-self.height/2)
       self.sliceView.forceRender()
