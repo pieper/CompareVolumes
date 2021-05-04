@@ -1,6 +1,3 @@
-
-from __future__ import division
-from __future__ import print_function
 import os, string
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
@@ -541,7 +538,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         sliceNodesByViewName[viewName] = sliceNode
     return sliceNodesByViewName
 
-class ViewWatcher(object):
+class ViewWatcher:
   """A helper class to manage observers on slice views"""
 
   def __init__(self):
@@ -701,7 +698,7 @@ class LayerReveal(ViewWatcher):
   """Track the mouse and show a reveal view"""
 
   def __init__(self,parent=None,width=400,height=400,showWidget=False,scale=False):
-    super(LayerReveal,self).__init__()
+    super().__init__()
     self.width = width
     self.height = height
     self.showWidget = showWidget
@@ -747,7 +744,7 @@ class LayerReveal(ViewWatcher):
     if self.sliceView:
       self.sliceView.scheduleRender()
     try:
-      super(LayerReveal,self).cleanup()
+      super().cleanup()
     except TypeError:
       # Apparently during reloading of a scripted
       # module the superclass is not in the
