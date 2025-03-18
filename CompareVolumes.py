@@ -209,14 +209,14 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
             label=self.labelSelector.currentNode(),
             opacity=self.visualization.fadeSlider.value,
             )
-    if self.hotLinkWithCursorCheck.checked:
-        for viewName in viewers.keys():
-            sliceWidget = slicer.app.layoutManager().sliceWidget(viewName)
-            compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
-            compositeNode.SetLinkedControl(True)
-            compositeNode.SetHotLinkedControl(True)
-        crosshairNode = slicer.mrmlScene.GetSingletonNode("default", "vtkMRMLCrosshairNode")
-        crosshairNode.SetCrosshairMode(crosshairNode.ShowSmallBasic)
+    for viewName in viewers.keys():
+        sliceWidget = slicer.app.layoutManager().sliceWidget(viewName)
+        compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+        compositeNode.SetLinkedControl(self.hotLinkWithCursorCheck.checked)
+        compositeNode.SetHotLinkedControl(self.hotLinkWithCursorCheck.checked)
+    crosshairNode = slicer.mrmlScene.GetSingletonNode("default", "vtkMRMLCrosshairNode")
+    crossharMode = crosshairNode.ShowSmallBasic if self.hotLinkWithCursorCheck.checked else crosshairNode.NoCrosshair
+    crosshairNode.SetCrosshairMode(crossharMode)
 
 
 class VolumeOrderSelect:
