@@ -209,14 +209,14 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
             label=self.labelSelector.currentNode(),
             opacity=self.visualization.fadeSlider.value,
             )
-    if self.hotLinkWithCursorCheck.checked:
-        for viewName in viewers.keys():
-            sliceWidget = slicer.app.layoutManager().sliceWidget(viewName)
-            compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
-            compositeNode.SetLinkedControl(True)
-            compositeNode.SetHotLinkedControl(True)
-        crosshairNode = slicer.mrmlScene.GetSingletonNode("default", "vtkMRMLCrosshairNode")
-        crosshairNode.SetCrosshairMode(crosshairNode.ShowSmallBasic)
+    for viewName in viewers.keys():
+        sliceWidget = slicer.app.layoutManager().sliceWidget(viewName)
+        compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
+        compositeNode.SetLinkedControl(self.hotLinkWithCursorCheck.checked)
+        compositeNode.SetHotLinkedControl(self.hotLinkWithCursorCheck.checked)
+    crosshairNode = slicer.mrmlScene.GetSingletonNode("default", "vtkMRMLCrosshairNode")
+    crossharMode = crosshairNode.ShowSmallBasic if self.hotLinkWithCursorCheck.checked else crosshairNode.NoCrosshair
+    crosshairNode.SetCrosshairMode(crossharMode)
 
 
 class VolumeOrderSelect:
@@ -892,6 +892,7 @@ class CompareVolumesTest(ScriptedLoadableModuleTest):
       self.test_CompareVolumes1()
       self.test_CompareVolumes2()
       self.test_CompareVolumes3()
+      self.test_CompareVolumes4()
 
   def test_CompareVolumes1(self):
     """ Test modes with 3 volumes.
@@ -1010,5 +1011,48 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
 
 
     self.delayDisplay('Should have just seen reveal cursor move through head view')
+
+    self.delayDisplay('Test passed!')
+
+  def test_CompareVolumes4(self):
+    self.delayDisplay("Starting Hot Link Control test")
+
+    slicer.mrmlScene.Clear(0)
+    m = slicer.util.mainWindow()
+    m.moduleSelector().selectModule('CompareVolumes')
+    widget = slicer.modules.CompareVolumesWidget
+
+    from SampleData import SampleDataLogic
+    SampleDataLogic().downloadMRHead()
+    SampleDataLogic().downloadDTIBrain()
+
+    widget.compareVolumesButton.click()  # hot link default on
+
+    left_slice_widget = slicer.app.layoutManager().sliceWidget('0_0')
+    right_slice_widget = slicer.app.layoutManager().sliceWidget('0_1')
+    left_slice_node = left_slice_widget.sliceLogic().GetSliceNode()
+    right_slice_node = right_slice_widget.sliceLogic().GetSliceNode()
+
+    self.assertAlmostEqual(left_slice_node.GetSliceOffset(), right_slice_node.GetSliceOffset())
+
+    # changes to left slice should be reflected in the other
+    left_offset_initial = left_slice_node.GetSliceOffset()
+    left_slice_widget.interactorStyle().GetInteractor().MouseWheelForwardEvent()
+    left_offset_new = left_offset_initial + left_slice_widget.sliceLogic().GetLowestVolumeSliceSpacing()[2]
+    self.assertAlmostEqual(left_slice_node.GetSliceOffset(), left_offset_new)
+    self.assertAlmostEqual(left_slice_node.GetSliceOffset(), right_slice_node.GetSliceOffset())
+
+    widget.hotLinkWithCursorCheck.setChecked(False)
+    widget.compareVolumesButton.click()
+
+    self.assertAlmostEqual(left_slice_node.GetSliceOffset(), right_slice_node.GetSliceOffset())
+
+    # changes to left slice are not reflected in the other
+    right_offset_initial = right_slice_node.GetSliceOffset()
+    left_offset_initial = left_slice_node.GetSliceOffset()
+    right_slice_widget.interactorStyle().GetInteractor().MouseWheelForwardEvent()
+    right_offset_new = right_offset_initial + right_slice_widget.sliceLogic().GetLowestVolumeSliceSpacing()[2]
+    self.assertAlmostEqual(right_slice_node.GetSliceOffset(), right_offset_new)
+    self.assertAlmostEqual(left_slice_node.GetSliceOffset(), left_offset_initial)
 
     self.delayDisplay('Test passed!')
