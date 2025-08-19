@@ -334,7 +334,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
       layoutNode.AddLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
     layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
 
-  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],layout=None,orientation='Axial',opacity=0.5):
+  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],layout=None,orientation='Axial',opacity=0.5,returnVolumeViewMapping=False):
     """ Load each volume in the scene into its own
     slice viewer and link them all together.
     If background is specified, put it in the background
@@ -343,6 +343,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     the label layer of all viewers.
     Return a map of slice nodes indexed by the view name (given or generated).
     Opacity applies only when background is selected.
+    returnVolumeViewMapping is a boolean that, if True, returns an additional mapping of volume IDs to view names.
     """
     import math
 
@@ -404,8 +405,9 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     slicer.app.processEvents()
 
     # put one of the volumes into each view, or none if it should be blank
-    sliceNodesByViewName = {}
     layoutManager = slicer.app.layoutManager()
+    sliceNodesByViewName = {}
+    volumeViewMapping = {}
     for index in range(len(actualViewNames)):
       viewName = actualViewNames[index]
       try:
@@ -419,9 +421,13 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         compositeNode.SetBackgroundVolumeID(background.GetID())
         compositeNode.SetForegroundVolumeID(volumeNodeID)
         compositeNode.SetForegroundOpacity(opacity)
+        volumeViewMapping.setdefault(background.GetID(), {}).setdefault("background", []).append(viewName)
+        volumeViewMapping.setdefault(volumeNodeID, {}).setdefault("foreground", []).append(viewName)
+
       else:
         compositeNode.SetBackgroundVolumeID(volumeNodeID)
         compositeNode.SetForegroundVolumeID("")
+        volumeViewMapping.setdefault(volumeNodeID, {}).setdefault("background", []).append(viewName)
 
       if label:
         compositeNode.SetLabelVolumeID(label.GetID())
@@ -431,7 +437,11 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
       sliceNode = sliceWidget.mrmlSliceNode()
       sliceNode.SetOrientation(orientation)
       sliceNodesByViewName[viewName] = sliceNode
-    return sliceNodesByViewName
+
+    if returnVolumeViewMapping:
+      return sliceNodesByViewName, volumeViewMapping
+    else:
+      return sliceNodesByViewName
 
   def rotateToVolumePlanes(self, referenceVolume):
     sliceNodes = slicer.util.getNodes('vtkMRMLSliceNode*')
@@ -464,7 +474,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         sliceNode.SetFieldOfView( newFOVx, newFOVy, newFOVz )
         sliceNode.UpdateMatrices()
 
-  def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False,opacity=0.5):
+  def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False,opacity=0.5,returnVolumeViewMapping=False):
     """ Make an axi/sag/cor(/3D) row of viewers
     for each volume in the scene.
     If background is specified, put it in the background
@@ -472,6 +482,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     forground.  If label is specified, make it active as
     the label layer of all viewers.
     Return a map of slice nodes indexed by the view name (given or generated).
+    returnVolumeViewMapping is a boolean that, if True, returns an additional mapping of volume IDs to view names.
     """
     import math
 
@@ -517,6 +528,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     # put one of the volumes into each row and set orientations
     layoutManager = slicer.app.layoutManager()
     sliceNodesByViewName = {}
+    volumeViewMapping = {}
     for volumeNode in volumeNodes:
       for orientation in orientations:
         viewName = volumeNode.GetName() + '-' + orientation
@@ -526,9 +538,13 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
           compositeNode.SetBackgroundVolumeID(background.GetID())
           compositeNode.SetForegroundVolumeID(volumeNode.GetID())
           compositeNode.SetForegroundOpacity(opacity)
+          volumeViewMapping.setdefault(background.GetID(), {}).setdefault("background", []).append(viewName)
+          volumeViewMapping.setdefault(volumeNode.GetID(), {}).setdefault("foreground", []).append(viewName)
+
         else:
           compositeNode.SetBackgroundVolumeID(volumeNode.GetID())
           compositeNode.SetForegroundVolumeID("")
+          volumeViewMapping.setdefault(volumeNode.GetID(), {}).setdefault("background", []).append(viewName)
         if label:
           compositeNode.SetLabelVolumeID(label.GetID())
         else:
@@ -536,7 +552,11 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         sliceNode = sliceWidget.mrmlSliceNode()
         sliceNode.SetOrientation(orientation)
         sliceNodesByViewName[viewName] = sliceNode
-    return sliceNodesByViewName
+
+    if returnVolumeViewMapping:
+      return sliceNodesByViewName, volumeViewMapping
+    else:
+      return sliceNodesByViewName
 
 class ViewWatcher:
   """A helper class to manage observers on slice views"""
