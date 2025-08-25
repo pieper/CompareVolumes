@@ -1,4 +1,7 @@
 import os, string
+
+from typing import List
+
 import vtk, qt, ctk, slicer
 from slicer.ScriptedLoadableModule import *
 
@@ -77,23 +80,6 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     parametersFormLayout.addRow("Volumes", self.volumeOrderSelect.widget)
 
     #
-    # orientation
-    #
-    self.orientationBox = qt.QGroupBox()
-    self.orientationBox.setLayout(qt.QFormLayout())
-    self.orientationButtons = {}
-    self.orientations = ("Axial", "Sagittal", "Coronal", "AxiSagCor")
-    for orientation in self.orientations:
-      self.orientationButtons[orientation] = qt.QRadioButton()
-      self.orientationButtons[orientation].text = orientation
-      self.orientationButtons[orientation].connect("clicked()",
-                                lambda o=orientation: self.setOrientation(o))
-      self.orientationBox.layout().addWidget(
-                                self.orientationButtons[orientation])
-    parametersFormLayout.addRow("Orientation", self.orientationBox)
-    self.setOrientation(self.orientations[0])
-
-    #
     # background volume selector
     #
     self.backgroundSelector = slicer.qMRMLNodeComboBox()
@@ -141,10 +127,11 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     self.visualization = LandmarkRegistration.RegistrationLib.VisualizationWidget(None)
     self.visualization.groupBoxLayout.itemAt(3).widget().hide()
     self.visualization.groupBoxLayout.itemAt(2).widget().hide()
-    self.visualization.groupBoxLayout.itemAt(1).widget().hide()
-    self.visualization.groupBoxLayout.itemAt(0).widget().hide()
     parametersFormLayout.addRow(self.visualization.widget)
-    self.visualization.connect("layoutRequested(mode,volumesToShow)", self.onCompareVolumes)
+    self.visualization.connect("layoutRequested(mode,volumesToShow)", self.onLayoutRequested)
+    self.visualization.layoutOption = self.visualization.layoutOptions[0]
+    self.onCompareVolumes()
+    self.visualization.onZoom("Fit")
 
     #
     # Compare Button
@@ -178,11 +165,6 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     if self.layerReveal:
       self.layerReveal.cleanup()
 
-  def setOrientation(self,orientation):
-    if orientation in self.orientations:
-      self.selectedOrientation = orientation
-      self.orientationButtons[orientation].checked = True
-
   def onLayerRevealToggled(self):
     if self.layerReveal is not None:
       self.layerReveal.cleanup()
@@ -194,7 +176,7 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     logic = CompareVolumesLogic()
     volumeIDs = self.volumeOrderSelect.volumeIDs()
     volumeNodes = [slicer.mrmlScene.GetNodeByID(id) for id in volumeIDs]
-    if self.selectedOrientation == 'AxiSagCor':
+    if self.visualization.layoutOption == 'Axi/Sag/Cor':
         viewers = logic.viewersPerVolume(
             volumeNodes=volumeNodes,
             background=self.backgroundSelector.currentNode(),
@@ -204,11 +186,16 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     else:
         viewers = logic.viewerPerVolume(
             volumeNodes=volumeNodes,
-            orientation=self.selectedOrientation,
+            orientation=self.visualization.layoutOption,
             background=self.backgroundSelector.currentNode(),
             label=self.labelSelector.currentNode(),
             opacity=self.visualization.fadeSlider.value,
             )
+    
+    # when no volumes are selected, viewers is None
+    if not viewers:
+      return
+
     for viewName in viewers.keys():
         sliceWidget = slicer.app.layoutManager().sliceWidget(viewName)
         compositeNode = sliceWidget.sliceLogic().GetSliceCompositeNode()
@@ -217,6 +204,15 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
     crosshairNode = slicer.mrmlScene.GetSingletonNode("default", "vtkMRMLCrosshairNode")
     crossharMode = crosshairNode.ShowSmallBasic if self.hotLinkWithCursorCheck.checked else crosshairNode.NoCrosshair
     crosshairNode.SetCrosshairMode(crossharMode)
+
+  def onLayoutRequested(self, mode: str, volumesToShow: List[str]) -> None:
+
+    if mode not in self.visualization.layoutOptions:
+      return
+
+    self.visualization.layoutOption = mode
+    self.onCompareVolumes()
+    self.visualization.onZoom("Fit")
 
 
 class VolumeOrderSelect:
