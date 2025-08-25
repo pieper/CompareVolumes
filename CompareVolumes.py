@@ -1095,51 +1095,68 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
 
     # Test viewerPerVolume with no common background
     _, volumeViewMapping = logic.viewerPerVolume([head, dti],
-                                                                                             background=None,
-                                                                                             returnVolumeViewMapping=True)
-    
+                                                 background=None,
+                                                 returnVolumeViewMapping=True)
+
     correct_output = {
-      'vtkMRMLScalarVolumeNode1': {'background': ['0_0']},
-      'vtkMRMLDiffusionTensorVolumeNode1': {'background': ['0_1']}
+        'vtkMRMLScalarVolumeNode1': {
+            'background': ['0_0']
+        },
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'background': ['0_1']
+        }
     }
     self.assertEqual(volumeViewMapping, correct_output)
 
     # Test viewersPerVolume with no common background
     _, volumeViewMapping = logic.viewersPerVolume([head, dti],
-                                                                                             background=None,
-                                                                                             returnVolumeViewMapping=True)
+                                                  background=None,
+                                                  returnVolumeViewMapping=True)
     correct_output = {
-      'vtkMRMLScalarVolumeNode1': {'background': ['MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal']},
-      'vtkMRMLDiffusionTensorVolumeNode1': {'background': ['DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal']}
+        'vtkMRMLScalarVolumeNode1': {
+            'background':
+            ['MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal']
+        },
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'background':
+            ['DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal']
+        }
     }
     self.assertEqual(volumeViewMapping, correct_output)
 
     # Test viewerPerVolume with common background
     _, volumeViewMapping = logic.viewerPerVolume([head, dti],
-                                                                                             background=head,
-                                                                                             returnVolumeViewMapping=True)
+                                                 background=head,
+                                                 returnVolumeViewMapping=True)
     correct_output = {
-      'vtkMRMLScalarVolumeNode1': {
-        'background': ['0_0', '0_1'],
-        'foreground': ['0_0']
+        'vtkMRMLScalarVolumeNode1': {
+            'background': ['0_0', '0_1'],
+            'foreground': ['0_0']
         },
-      'vtkMRMLDiffusionTensorVolumeNode1': {'foreground': ['0_1']}
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'foreground': ['0_1']
+        }
     }
     self.assertEqual(volumeViewMapping, correct_output)
 
     # Test viewersPerVolume with common background
     _, volumeViewMapping = logic.viewersPerVolume([head, dti],
-                                                                                             background=head,
-                                                                                             returnVolumeViewMapping=True)
+                                                  background=head,
+                                                  returnVolumeViewMapping=True)
     correct_output = {
-      'vtkMRMLScalarVolumeNode1': {
-        'background': ['MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal', 'DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal'],
-        'foreground': ['MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal']
+        'vtkMRMLScalarVolumeNode1': {
+            'background': [
+                'MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal',
+                'DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal'
+            ],
+            'foreground':
+            ['MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal']
         },
-      'vtkMRMLDiffusionTensorVolumeNode1': {'foreground': ['DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal']}
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'foreground':
+            ['DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal']
+        }
     }
     self.assertEqual(volumeViewMapping, correct_output)
 
     self.delayDisplay('Test passed!')
-
-
