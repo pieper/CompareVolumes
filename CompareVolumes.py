@@ -53,7 +53,7 @@ class CompareVolumesWidget(ScriptedLoadableModuleWidget):
 
     if self.developerMode:
       # reload and run specific tests
-      scenarios = ("Three Volume", "View Watcher", "LayerReveal",)
+      scenarios = ("Three Volume", "View Watcher", "LayerReveal", "Optional VolumeID Mapping")
       for scenario in scenarios:
         button = qt.QPushButton("Reload and Test %s" % scenario)
         button.toolTip = "Reload this module and then run the %s self test." % scenario
@@ -334,7 +334,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
       layoutNode.AddLayoutDescription(layoutNode.SlicerLayoutUserView, layoutDescription)
     layoutNode.SetViewArrangement(layoutNode.SlicerLayoutUserView)
 
-  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],layout=None,orientation='Axial',opacity=0.5):
+  def viewerPerVolume(self,volumeNodes=None,background=None,label=None,viewNames=[],layout=None,orientation='Axial',opacity=0.5,returnVolumeViewMapping=False):
     """ Load each volume in the scene into its own
     slice viewer and link them all together.
     If background is specified, put it in the background
@@ -343,6 +343,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     the label layer of all viewers.
     Return a map of slice nodes indexed by the view name (given or generated).
     Opacity applies only when background is selected.
+    returnVolumeViewMapping is a boolean that, if True, returns an additional mapping of volume IDs to view names.
     """
     import math
 
@@ -404,8 +405,9 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     slicer.app.processEvents()
 
     # put one of the volumes into each view, or none if it should be blank
-    sliceNodesByViewName = {}
     layoutManager = slicer.app.layoutManager()
+    sliceNodesByViewName = {}
+    volumeViewMapping = {}
     for index in range(len(actualViewNames)):
       viewName = actualViewNames[index]
       try:
@@ -419,9 +421,13 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         compositeNode.SetBackgroundVolumeID(background.GetID())
         compositeNode.SetForegroundVolumeID(volumeNodeID)
         compositeNode.SetForegroundOpacity(opacity)
+        volumeViewMapping.setdefault(background.GetID(), {}).setdefault("background", []).append(viewName)
+        volumeViewMapping.setdefault(volumeNodeID, {}).setdefault("foreground", []).append(viewName)
+
       else:
         compositeNode.SetBackgroundVolumeID(volumeNodeID)
         compositeNode.SetForegroundVolumeID("")
+        volumeViewMapping.setdefault(volumeNodeID, {}).setdefault("background", []).append(viewName)
 
       if label:
         compositeNode.SetLabelVolumeID(label.GetID())
@@ -431,7 +437,11 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
       sliceNode = sliceWidget.mrmlSliceNode()
       sliceNode.SetOrientation(orientation)
       sliceNodesByViewName[viewName] = sliceNode
-    return sliceNodesByViewName
+
+    if returnVolumeViewMapping:
+      return sliceNodesByViewName, volumeViewMapping
+    else:
+      return sliceNodesByViewName
 
   def rotateToVolumePlanes(self, referenceVolume):
     sliceNodes = slicer.util.getNodes('vtkMRMLSliceNode*')
@@ -464,7 +474,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         sliceNode.SetFieldOfView( newFOVx, newFOVy, newFOVz )
         sliceNode.UpdateMatrices()
 
-  def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False,opacity=0.5):
+  def viewersPerVolume(self,volumeNodes=None,background=None,label=None,include3D=False,opacity=0.5,returnVolumeViewMapping=False):
     """ Make an axi/sag/cor(/3D) row of viewers
     for each volume in the scene.
     If background is specified, put it in the background
@@ -472,6 +482,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     forground.  If label is specified, make it active as
     the label layer of all viewers.
     Return a map of slice nodes indexed by the view name (given or generated).
+    returnVolumeViewMapping is a boolean that, if True, returns an additional mapping of volume IDs to view names.
     """
     import math
 
@@ -517,6 +528,7 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
     # put one of the volumes into each row and set orientations
     layoutManager = slicer.app.layoutManager()
     sliceNodesByViewName = {}
+    volumeViewMapping = {}
     for volumeNode in volumeNodes:
       for orientation in orientations:
         viewName = volumeNode.GetName() + '-' + orientation
@@ -526,9 +538,13 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
           compositeNode.SetBackgroundVolumeID(background.GetID())
           compositeNode.SetForegroundVolumeID(volumeNode.GetID())
           compositeNode.SetForegroundOpacity(opacity)
+          volumeViewMapping.setdefault(background.GetID(), {}).setdefault("background", []).append(viewName)
+          volumeViewMapping.setdefault(volumeNode.GetID(), {}).setdefault("foreground", []).append(viewName)
+
         else:
           compositeNode.SetBackgroundVolumeID(volumeNode.GetID())
           compositeNode.SetForegroundVolumeID("")
+          volumeViewMapping.setdefault(volumeNode.GetID(), {}).setdefault("background", []).append(viewName)
         if label:
           compositeNode.SetLabelVolumeID(label.GetID())
         else:
@@ -536,7 +552,11 @@ class CompareVolumesLogic(ScriptedLoadableModuleLogic):
         sliceNode = sliceWidget.mrmlSliceNode()
         sliceNode.SetOrientation(orientation)
         sliceNodesByViewName[viewName] = sliceNode
-    return sliceNodesByViewName
+
+    if returnVolumeViewMapping:
+      return sliceNodesByViewName, volumeViewMapping
+    else:
+      return sliceNodesByViewName
 
 class ViewWatcher:
   """A helper class to manage observers on slice views"""
@@ -888,11 +908,14 @@ class CompareVolumesTest(ScriptedLoadableModuleTest):
       self.test_CompareVolumes2()
     elif scenario == "LayerReveal":
       self.test_CompareVolumes3()
+    elif scenario == "Optional VolumeID Mapping":
+      self.test_CompareVolumes5()
     else:
       self.test_CompareVolumes1()
       self.test_CompareVolumes2()
       self.test_CompareVolumes3()
       self.test_CompareVolumes4()
+      self.test_CompareVolumes5()
 
   def test_CompareVolumes1(self):
     """ Test modes with 3 volumes.
@@ -1054,5 +1077,86 @@ slicer.util.mainWindow().moduleSelector().selectModule("CompareVolumes"); slicer
     right_offset_new = right_offset_initial + right_slice_widget.sliceLogic().GetLowestVolumeSliceSpacing()[2]
     self.assertAlmostEqual(right_slice_node.GetSliceOffset(), right_offset_new)
     self.assertAlmostEqual(left_slice_node.GetSliceOffset(), left_offset_initial)
+
+    self.delayDisplay('Test passed!')
+
+  def test_CompareVolumes5(self):
+    """
+    Test viewerPerVolume and viewersPerVolume with optional mapping of volume IDs to view names.
+    """
+
+    slicer.mrmlScene.Clear(0)
+
+    from SampleData import SampleDataLogic
+    head = SampleDataLogic().downloadMRHead()
+    dti = SampleDataLogic().downloadDTIBrain()
+
+    logic = CompareVolumesLogic()
+
+    # Test viewerPerVolume with no common background
+    _, volumeViewMapping = logic.viewerPerVolume([head, dti],
+                                                 background=None,
+                                                 returnVolumeViewMapping=True)
+
+    correct_output = {
+        'vtkMRMLScalarVolumeNode1': {
+            'background': ['0_0']
+        },
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'background': ['0_1']
+        }
+    }
+    self.assertEqual(volumeViewMapping, correct_output)
+
+    # Test viewersPerVolume with no common background
+    _, volumeViewMapping = logic.viewersPerVolume([head, dti],
+                                                  background=None,
+                                                  returnVolumeViewMapping=True)
+    correct_output = {
+        'vtkMRMLScalarVolumeNode1': {
+            'background':
+            ['MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal']
+        },
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'background':
+            ['DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal']
+        }
+    }
+    self.assertEqual(volumeViewMapping, correct_output)
+
+    # Test viewerPerVolume with common background
+    _, volumeViewMapping = logic.viewerPerVolume([head, dti],
+                                                 background=head,
+                                                 returnVolumeViewMapping=True)
+    correct_output = {
+        'vtkMRMLScalarVolumeNode1': {
+            'background': ['0_0', '0_1'],
+            'foreground': ['0_0']
+        },
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'foreground': ['0_1']
+        }
+    }
+    self.assertEqual(volumeViewMapping, correct_output)
+
+    # Test viewersPerVolume with common background
+    _, volumeViewMapping = logic.viewersPerVolume([head, dti],
+                                                  background=head,
+                                                  returnVolumeViewMapping=True)
+    correct_output = {
+        'vtkMRMLScalarVolumeNode1': {
+            'background': [
+                'MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal',
+                'DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal'
+            ],
+            'foreground':
+            ['MRHead-Axial', 'MRHead-Sagittal', 'MRHead-Coronal']
+        },
+        'vtkMRMLDiffusionTensorVolumeNode1': {
+            'foreground':
+            ['DTIBrain-Axial', 'DTIBrain-Sagittal', 'DTIBrain-Coronal']
+        }
+    }
+    self.assertEqual(volumeViewMapping, correct_output)
 
     self.delayDisplay('Test passed!')
